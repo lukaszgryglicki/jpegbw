@@ -9,11 +9,11 @@ Q=90 LO=1 HI=74 GA=2 ./images.sh lo_2
 Q=90 LO=1 HI=74 GA=0.5 ./images.sh lo_0.5
 Q=90 LO=1 HI=74 GA=5 ./images.sh lo_5
 Q=90 LO=1 HI=74 GA=0.2 ./images.sh lo_0.2
-Q=90 LO=37.5 HI=62.5 GA=1 ./images.sh mi_1
-Q=90 LO=37.5 HI=62.5 GA=2 ./images.sh mi_2
-Q=90 LO=37.5 HI=62.5 GA=0.5 ./images.sh mi_0.5
-Q=90 LO=37.5 HI=62.5 GA=5 ./images.sh mi_5
-Q=90 LO=37.5 HI=62.5 GA=0.2 ./images.sh mi_0.2
+Q=90 LO=37.5 HI=37.5 GA=1 ./images.sh mi_1
+Q=90 LO=37.5 HI=37.5 GA=2 ./images.sh mi_2
+Q=90 LO=37.5 HI=37.5 GA=0.5 ./images.sh mi_0.5
+Q=90 LO=37.5 HI=37.5 GA=5 ./images.sh mi_5
+Q=90 LO=37.5 HI=37.5 GA=0.2 ./images.sh mi_0.2
 Q=90 LO=74 HI=1 GA=1 ./images.sh hi_1
 Q=90 LO=74 HI=1 GA=2 ./images.sh hi_2
 Q=90 LO=74 HI=1 GA=0.5 ./images.sh hi_0.5
