@@ -26,3 +26,6 @@
 
 # VIM swap files
 *.swp
+
+# DYlib files
+*.so

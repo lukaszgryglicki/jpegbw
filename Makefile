@@ -13,11 +13,19 @@ GO_USEDEXPORTS=usedexports
 GO_ERRCHECK=errcheck -asserts -ignore '[FS]?[Pp]rint*'
 BINARIES=jpegbw
 STRIP=strip
+C_LIBS=jpegbw.so
+C_ENV=
+C_LINK=-lm
+C_FILES=jpegbw.h jpegbw.c
+GCC=gcc
 
-all: check ${BINARIES}
+all: check ${BINARIES} ${C_LIBS}
 
 jpegbw: cmd/jpegbw/jpegbw.go
-	 ${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
+	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
+
+jpegbw.so: ${C_FILES}
+	${C_ENV} ${GCC} -shared -o jpegbw.so jpegbw.c ${C_LINK}
 
 fmt: ${GO_BIN_FILES}
 	./for_each_go_file.sh "${GO_FMT}"
@@ -42,11 +50,13 @@ errcheck: ${GO_BIN_FILES}
 
 check: fmt lint imports vet const usedexports errcheck
 
-install: check ${BINARIES}
+install: check ${BINARIES} ${C_LIBS}
 	${GO_INSTALL} ${GO_BIN_CMDS}
+	cp ${C_LIBS} /usr/local/lib
 
-strip: ${BINARIES}
+strip: ${BINARIES} ${C_LIBS}
 	${STRIP} ${BINARIES}
+	${STRIP} ${C_LIBS}
 
 clean:
-	rm -f ${BINARIES}
+	rm -f ${BINARIES} ${C_LIBS}
