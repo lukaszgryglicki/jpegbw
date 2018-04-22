@@ -163,6 +163,49 @@ int init(char* lib) {
   }
   return 1;
 }
+
+void tidy() {
+  if (handle) {
+    dlclose(handle);
+    handle = 0;
+  }
+  if (fptra) {
+    free((void*)fptra);
+    fptra = 0;
+  }
+  if (fptra2) {
+    free((void*)fptra2);
+    fptra2 = 0;
+  }
+  if (fptra3) {
+    free((void*)fptra3);
+    fptra3 = 0;
+  }
+  if (fptra4) {
+    free((void*)fptra4);
+    fptra4 = 0;
+  }
+  if (fnames) {
+    free((void*)fnames);
+    fnames = 0;
+  }
+  if (fnames2) {
+    free((void*)fnames2);
+    fnames2 = 0;
+  }
+  if (fnames3) {
+    free((void*)fnames3);
+    fnames3 = 0;
+  }
+  if (fnames4) {
+    free((void*)fnames4);
+    fnames4 = 0;
+  }
+  nptrs = 0;
+  nptrs2 = 0;
+  nptrs3 = 0;
+  nptrs4 = 0;
+}
 */
 import "C"
 
@@ -515,6 +558,7 @@ func images2BW(args []string) error {
 			if !ok {
 				return fmt.Errorf("LIB init failed for: %s", lib)
 			}
+			defer func() { C.tidy() }()
 		}
 		err := fctx.fparFunction(fun)
 		if err != nil {
