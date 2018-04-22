@@ -11,3 +11,7 @@ double toon(double arg, double n) {
 double vingette(double arg, double x, double y) {
   return sqrt(arg)*(1.-hypot(sqrt(2.)*(x-.5), sqrt(2.)*(y-.5)));
 }
+
+double alpha(double arg, double period, double offset, double power) {
+  return pow(.5*(cos(period*arg+offset)+1.), power);
+}

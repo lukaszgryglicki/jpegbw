@@ -13,12 +13,15 @@ static void* handle = 0;
 static double (**fptra)(double) = 0;
 static double (**fptra2)(double, double) = 0;
 static double (**fptra3)(double, double, double) = 0;
+static double (**fptra4)(double, double, double, double) = 0;
 static char** fnames = 0;
 static char** fnames2 = 0;
 static char** fnames3 = 0;
+static char** fnames4 = 0;
 static int nptrs = 0;
 static int nptrs2 = 0;
 static int nptrs3 = 0;
+static int nptrs4 = 0;
 
 double byname(char* fname, double arg) {
   int i;
@@ -110,6 +113,36 @@ double byname3(char* fname, double arg1, double arg2, double arg3) {
   return (*fptr)(arg1, arg2, arg3);
 }
 
+double byname4(char* fname, double arg1, double arg2, double arg3, double arg4) {
+  int i;
+  double (*fptr)(double, double, double, double) = 0;
+  if (!handle) {
+    printf("byname4 %s,%f,%f,%f,%f: library not open\n", fname, arg1, arg2, arg3, arg4);
+    return 0.0;
+  }
+  for (i=0;i<nptrs4;i++) {
+    if (!strcmp(fnames4[i], fname)) {
+      fptr = fptra4[i];
+    }
+  }
+  if (!fptr) {
+    if (nptrs4 >= MAXFN) {
+      printf("byname4 %s,%f,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3, arg4);
+      return 0.0;
+    }
+    fptr = (double (*)(double, double, double, double))dlsym(handle, fname);
+    if (!fptr) {
+      printf("byname4 %s,%f,%f,%f,%f: function not found\n", fname, arg1, arg2, arg3, arg4);
+      return 0.0;
+    }
+    fptra4[nptrs4] = fptr;
+    fnames4[nptrs4] = (char*)malloc((strlen(fname)+1)*sizeof(char));
+    strcpy(fnames4[nptrs4], fname);
+    nptrs4 ++;
+  }
+  return (*fptr)(arg1, arg2, arg3, arg4);
+}
+
 int init(char* lib) {
   handle = dlopen(lib, RTLD_LAZY);
   if (!handle) {
@@ -119,10 +152,12 @@ int init(char* lib) {
   fptra = malloc(MAXFN*sizeof(void*));
   fptra2 = malloc(MAXFN*sizeof(void*));
   fptra3 = malloc(MAXFN*sizeof(void*));
+  fptra4 = malloc(MAXFN*sizeof(void*));
   fnames = (char**)malloc(MAXFN*sizeof(char*));
   fnames2 = (char**)malloc(MAXFN*sizeof(char*));
   fnames3 = (char**)malloc(MAXFN*sizeof(char*));
-  if (!fptra || !fnames || !fptra2 || !fnames2 || !fptra3 || !fnames) {
+  fnames4 = (char**)malloc(MAXFN*sizeof(char*));
+  if (!fptra || !fnames || !fptra2 || !fnames2 || !fptra3 || !fnames3 || !fptra4 || !fnames4) {
     printf("%s malloc failed\n", lib);
     return 0;
   }
@@ -321,6 +356,17 @@ func (ctx *fparCtx) callFunction(ident string) (float64, bool) {
 					v = float64(C.byname3(cident, C.double(res1), C.double(res2), C.double(res3)))
 					ctx.readNextChar()
 					ctx.skipBlanks()
+				} else if ctx.ch == "," {
+					ctx.skipBlanks()
+					res4 := ctx.expression()
+					ctx.skipBlanks()
+					if ctx.ch == ")" {
+						v = float64(C.byname4(cident, C.double(res1), C.double(res2), C.double(res3), C.double(res4)))
+						ctx.readNextChar()
+						ctx.skipBlanks()
+					} else {
+						ctx.er(fmt.Errorf("expected: ')' after 4 arguments function %s(%f,%f,%f: position: (%d/%d,ch=%s)", ident, res1, res2, res3, ctx.position, ctx.maxpos, ctx.ch))
+					}
 				} else {
 					ctx.er(fmt.Errorf("expected: ')' after 3 arguments function %s(%f,%f,: position: (%d/%d,ch=%s)", ident, res1, res2, ctx.position, ctx.maxpos, ctx.ch))
 				}
@@ -455,6 +501,7 @@ func (ctx *fparCtx) fparF(args []float64) (float64, error) {
 // F - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
 // LIB - if F is used and F calls external functions, thery need to be loaded for this C library
 // N - set number of CPUs to process data
+// O - eventual overwite file name config, example: ".jpg:.png"
 func images2BW(args []string) error {
 	// F, LIB processing
 	var fctx fparCtx
@@ -473,7 +520,7 @@ func images2BW(args []string) error {
 		if err != nil {
 			return err
 		}
-		err = fctx.fparOK(3)
+		err = fctx.fparOK(4)
 		if err != nil {
 			return err
 		}
@@ -595,15 +642,34 @@ func images2BW(args []string) error {
 		thrN = runtime.NumCPU()
 	}
 	runtime.GOMAXPROCS(thrN)
-	fmt.Printf("Final RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, quality: %d, gamma: (%v, %f), threads: %d\n", fact, r, g, b, lo, hi, jpegq, gaB, ga, thrN)
+
+	// Override file name config
+	overS := os.Getenv("O")
+	overB := false
+	overFrom := ""
+	overTo := ""
+	if overS != "" {
+		ary := strings.Split(overS, ":")
+		if len(ary) != 2 {
+			return fmt.Errorf("bad override filename config: %s", overS)
+		}
+		overFrom = ary[0]
+		overTo = ary[1]
+		overB = true
+	}
+	fmt.Printf(
+		"Final RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, quality: %d, gamma: (%v, %f), threads: %d, override: %v,%s,%s\n",
+		fact, r, g, b, lo, hi, jpegq, gaB, ga, thrN, overB, overFrom, overTo,
+	)
 
 	// Flushing before endline
 	flush := bufio.NewWriter(os.Stdout)
 
 	// Iterate given files
 	n := len(args)
-	for i, fn := range args {
-		fmt.Printf("%d/%d %s...", i+1, n, fn)
+	for k, fn := range args {
+		fk := float64(k) / float64(n)
+		fmt.Printf("%d/%d %s...", k+1, n, fn)
 		_ = flush.Flush()
 
 		// Input
@@ -730,7 +796,7 @@ func images2BW(args []string) error {
 					}
 					if bFun {
 						var e error
-						fv, e = ctxa[cNum].fparF([]float64{fv / 65535.0, fi, fj})
+						fv, e = ctxa[cNum].fparF([]float64{fv / 65535.0, fi, fj, fk})
 						if e != nil {
 							// Sync
 							cmtx.Lock()
@@ -782,8 +848,14 @@ func images2BW(args []string) error {
 			return err
 		}
 
+		// Eventual file name override
+		ifn := fn
+		if overB {
+			ifn = strings.Replace(fn, overFrom, overTo, -1)
+		}
+
 		// Output name
-		ary := strings.Split(fn, "/")
+		ary := strings.Split(ifn, "/")
 		lAry := len(ary)
 		last := ary[lAry-1]
 		ary[lAry-1] = "bw_" + last
@@ -792,7 +864,7 @@ func images2BW(args []string) error {
 		if err != nil {
 			return err
 		}
-		lfn := strings.ToLower(fn)
+		lfn := strings.ToLower(ifn)
 
 		// Output write
 		var ierr error
