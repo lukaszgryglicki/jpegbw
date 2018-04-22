@@ -12,7 +12,7 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 
 - You can use functions parser for example: `F="x1*x2+x3"`.
 - Any math operations are allowed like `+, -, /, *, ^` etc.
-- You can group expreccions using `( )`, for example `F="(x1+x2)*x3".
+- You can group expreccions using `( )`, for example `F="(x1+x2)*x3"`.
 - `x1` will be replaced with greyscale value of current pixel, range is 0-1.
 - `x2` will be replaced with current pixel's `x` position, range is 0-1.
 - `x3` will be replaced with current pixel's `y` position, range is 0-1.
