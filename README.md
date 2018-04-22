@@ -37,7 +37,7 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 
 # combine 3 grayscale images into RGB image
 
-- See `combine.sh` script.
+- See `combine*.sh` scripts.
 
 # other
 
