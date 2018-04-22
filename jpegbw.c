@@ -7,3 +7,7 @@ double func(double arg) {
 double toon(double arg, double n) {
   return (double)((int)(arg*(n+1)))/n;
 }
+
+double vingette(double arg, double x, double y) {
+  return sqrt(arg)*(1.-hypot(sqrt(2.)*(x-.5), sqrt(2.)*(y-.5)));
+}
