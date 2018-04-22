@@ -20,5 +20,9 @@
 *.jp*g
 *.JP*G
 
+# PNGs
+*.png
+*.PNG
+
 # VIM swap files
 *.swp

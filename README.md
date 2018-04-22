@@ -23,6 +23,8 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 - To use external C function you must provide path to a dynamic library (`.so` on linux, `.dylib` on mac, `.dll` on windows etc).
 - Library path example on mac: `LIB="/usr/lib/libm.dylib"`. Usually the `math lib` is what you need, linux: `LIB="/usr/lib/libm.so"`.
 - Example usage: `time LIB="/lib/aarch64-linux-gnu/libm-2.24.so" F="sin(x1*3.14159)^2" jpegbw in.jpg`.
+- You can use max up to 3-args functions, example: `R=0.25 G=0.6 B=0.15 LO=3 HI=3 LIB="/usr/lib/libm.dylib" F="fma(x2,x3,x1)" ./jpegbw in.png`
+- Other: `time R=0.25 G=0.6 B=0.15 LO=6 HI=6 LIB="/usr/lib/libm.dylib" F="((fma(x2,x3,x1)+fma(1-x2,x3,x1)+fma(x2,1-x3,x1)+fma(1-x2,1-x3,x1))/4)^2" ./jpegbw in.png`
 
 # multithreading
 
