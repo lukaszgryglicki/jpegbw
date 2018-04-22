@@ -361,6 +361,7 @@ func (ctx *fparCtx) fparF(args []float64) (float64, error) {
 // GA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)->(x,pow(x, GA)) mapping
 // F - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
 // LIB - if F is used and F calls external functions, thery need to be loaded for this C library
+// N - set number of CPUs to process data
 func images2BW(args []string) error {
 	// F, LIB processing
 	var fctx fparCtx
@@ -487,7 +488,19 @@ func images2BW(args []string) error {
 	}
 
 	// Threads
-	thrN := runtime.NumCPU()
+	thrsS := os.Getenv("N")
+	thrs := -1
+	if thrsS != "" {
+		t, err := strconv.Atoi(thrsS)
+		if err != nil {
+			return err
+		}
+		thrs = t
+	}
+	thrN := thrs
+	if thrs < 0 {
+		thrN = runtime.NumCPU()
+	}
 	runtime.GOMAXPROCS(thrN)
 	fmt.Printf("Final RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, quality: %d, gamma: (%v, %f), threads: %d\n", fact, r, g, b, lo, hi, jpegq, gaB, ga, thrN)
 
@@ -523,41 +536,22 @@ func images2BW(args []string) error {
 		hist := make(map[uint16]int)
 		minGs := uint16(0xffff)
 		maxGs := uint16(0)
-		var mtx = &sync.Mutex{}
 
-		ch := make(chan bool)
-		nThreads := 0
-		for ii := 0; ii < x; ii++ {
-			go func(c chan bool, i int) {
-				for j := 0; j < y; j++ {
-					// target.Set(i, j, m.At(i, j))
-					pr, pg, pb, _ := m.At(i, j).RGBA()
-					// fmt.Printf("%d,%d,%d\n", pr, pg, pb)
-					gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
-					mtx.Lock()
-					if gs < minGs {
-						minGs = gs
-					}
-					if gs > maxGs {
-						maxGs = gs
-					}
-					hist[gs]++
-					mtx.Unlock()
+		for i := 0; i < x; i++ {
+			for j := 0; j < y; j++ {
+				// target.Set(i, j, m.At(i, j))
+				pr, pg, pb, _ := m.At(i, j).RGBA()
+				// fmt.Printf("%d,%d,%d\n", pr, pg, pb)
+				gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
+				if gs < minGs {
+					minGs = gs
 				}
-				// Sync
-				c <- true
-			}(ch, ii)
-
-			// Keep maximum number of threads
-			nThreads++
-			if nThreads == thrN {
-				<-ch
-				nThreads--
+				if gs > maxGs {
+					maxGs = gs
+				}
+				hist[gs]++
 			}
-		}
-		for nThreads > 0 {
-			<-ch
-			nThreads--
+
 		}
 
 		// Calculations
@@ -594,7 +588,7 @@ func images2BW(args []string) error {
 		_ = flush.Flush()
 
 		che := make(chan error)
-		nThreads = 0
+		nThreads := 0
 		ctxa := []fparCtx{}
 		ctxInUse := make(map[int]bool)
 		for i := 0; i < thrN; i++ {
