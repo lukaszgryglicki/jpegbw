@@ -1,6 +1,7 @@
 package main
 
 /*
+#cgo LDFLAGS: -ldl
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
