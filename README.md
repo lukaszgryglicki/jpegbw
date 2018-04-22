@@ -23,3 +23,7 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 - To use external C function you must provide path to a dynamic library (`.so` on linux, `.dylib` on mac, `.dll` on windows etc).
 - Library path example on mac: `LIB="/usr/lib/libm.dylib"`. Usually the `math lib` is what you need, linux: `LIB="/usr/lib/libm.so"`.
 - Example usage: `time LIB="/lib/aarch64-linux-gnu/libm-2.24.so" F="sin(x1*3.14159)^2" jpegbw in.jpg`.
+
+# multithreading
+
+- Use `N=4` to specify to run using 4 threads, if no N is defined it will use Go runtime to get number of cores available.
