@@ -1,7 +1,8 @@
 GO_BIN_FILES=cmd/jpegbw/jpegbw.go
 GO_BIN_CMDS=jpegbw/cmd/jpegbw
-GO_ENV=CGO_ENABLED=0
+GO_ENV=CGO_ENABLED=1
 GO_BUILD=go build -ldflags '-s -w'
+#GO_BUILD=go build -ldflags '-s -w' -race
 GO_INSTALL=go install -ldflags '-s'
 GO_FMT=gofmt -s -w
 GO_LINT=golint -set_exit_status
