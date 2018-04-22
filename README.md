@@ -27,6 +27,7 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 - Other: `time R=0.25 G=0.6 B=0.15 LO=6 HI=6 LIB="/usr/lib/libm.dylib" F="((fma(x2,x3,x1)+fma(1-x2,x3,x1)+fma(x2,1-x3,x1)+fma(1-x2,1-x3,x1))/4)^2" ./jpegbw in.png`
 - Using local C library `jpegbw.so`: `LIB="./jpegbw.so" F="func(x1)" ./jpegbw in.png`
 - After `make install` just: `LIB="jpegbw.so" F="func(x1)" jpegbw in.png`.
+- Toon function: `LIB="jpegbw.so" F="toon(x1,5)" jpegbw in.png`
 
 # multithreading
 
