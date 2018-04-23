@@ -171,7 +171,7 @@ int init(char* lib) {
   return 1;
 }
 
-void tidy() {
+void tidy(void) {
   if (handle) {
     dlclose(handle);
     handle = 0;

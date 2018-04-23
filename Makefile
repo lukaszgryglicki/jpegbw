@@ -1,4 +1,5 @@
 GO_BIN_FILES=cmd/jpegbw/jpegbw.go
+GO_LIB_FILES=fpar.go
 GO_BIN_CMDS=jpegbw/cmd/jpegbw
 GO_ENV=CGO_ENABLED=1
 GO_BUILD=go build -ldflags '-s -w'
@@ -17,35 +18,36 @@ C_LIBS=libjpegbw.so libbyname.so
 C_ENV=
 C_LINK=-lm
 C_FILES=jpegbw.h jpegbw.c byname.h byname.c
+C_FLAGS=-Wall -ansi -pedantic -shared -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion -Werror
 GCC=gcc
 
 all: check ${BINARIES} ${C_LIBS}
 
-jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS}
+jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
 
-libjpegbw.so: ${C_FILES}
-	${C_ENV} ${GCC} -shared -O3 -ffast-math -o libjpegbw.so jpegbw.c ${C_LINK}
+libjpegbw.so: jpegbw.c jpegbw.h
+	${C_ENV} ${GCC} ${C_FLAGS} -o libjpegbw.so jpegbw.c ${C_LINK}
 
-libbyname.so: ${C_FILES}
-	${C_ENV} ${GCC} -shared -O3 -ffast-math -o libbyname.so byname.c ${C_LINK}
+libbyname.so: byname.c byname.h
+	${C_ENV} ${GCC} ${C_FLAGS} -o libbyname.so byname.c ${C_LINK}
 
-fmt: ${GO_BIN_FILES}
+fmt: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_FMT}"
 
-lint: ${GO_BIN_FILES}
+lint: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_LINT}"
 
-vet: ${GO_BIN_FILES}
+vet: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_VET}"
 
-imports: ${GO_BIN_FILES}
+imports: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_IMPORTS}"
 
-const: ${GO_BIN_FILES}
+const: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	${GO_CONST} ./...
 
-usedexports: ${GO_BIN_FILES}
+usedexports: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	${GO_USEDEXPORTS} ./...
 
 errcheck: ${GO_BIN_FILES}
