@@ -1,227 +1,8 @@
 package main
 
 /*
-#cgo LDFLAGS: -ldl
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <dlfcn.h>
-
-#define MAXFN 2048
-
-static void* handle = 0;
-static double (**fptra)(double) = 0;
-static double (**fptra2)(double, double) = 0;
-static double (**fptra3)(double, double, double) = 0;
-static double (**fptra4)(double, double, double, double) = 0;
-static char** fnames = 0;
-static char** fnames2 = 0;
-static char** fnames3 = 0;
-static char** fnames4 = 0;
-static int nptrs = 0;
-static int nptrs2 = 0;
-static int nptrs3 = 0;
-static int nptrs4 = 0;
-
-double byname(char* fname, double arg, int* res) {
-  int i;
-  double (*fptr)(double) = 0;
-  if (!handle) {
-    printf("byname %s,%f: library not open\n", fname, arg);
-    *res = 1;
-    return 0.0;
-  }
-  for (i=0;i<nptrs;i++) {
-    if (!strcmp(fnames[i], fname)) {
-      fptr = fptra[i];
-    }
-  }
-  if (!fptr) {
-    if (nptrs >= MAXFN) {
-      printf("byname %s,%f: function table full\n", fname, arg);
-      *res = 2;
-      return 0.0;
-    }
-    fptr = (double (*)(double))dlsym(handle, fname);
-    if (!fptr) {
-      printf("byname %s,%f: function not found\n", fname, arg);
-      *res = 3;
-      return 0.0;
-    }
-    fptra[nptrs] = fptr;
-    fnames[nptrs] = (char*)malloc((strlen(fname)+1)*sizeof(char));
-    strcpy(fnames[nptrs], fname);
-    nptrs ++;
-  }
-  *res = 0;
-  return (*fptr)(arg);
-}
-
-double byname2(char* fname, double arg1, double arg2, int* res) {
-  int i;
-  double (*fptr)(double, double) = 0;
-  if (!handle) {
-    printf("byname2 %s,%f,%f: library not open\n", fname, arg1, arg2);
-    *res = 1;
-    return 0.0;
-  }
-  for (i=0;i<nptrs2;i++) {
-    if (!strcmp(fnames2[i], fname)) {
-      fptr = fptra2[i];
-    }
-  }
-  if (!fptr) {
-    if (nptrs2 >= MAXFN) {
-      printf("byname2 %s,%f,%f: function table full\n", fname, arg1, arg2);
-      *res = 2;
-      return 0.0;
-    }
-    fptr = (double (*)(double, double))dlsym(handle, fname);
-    if (!fptr) {
-      printf("byname2 %s,%f,%f: function not found\n", fname, arg1, arg2);
-      *res = 3;
-      return 0.0;
-    }
-    fptra2[nptrs2] = fptr;
-    fnames2[nptrs2] = (char*)malloc((strlen(fname)+1)*sizeof(char));
-    strcpy(fnames2[nptrs2], fname);
-    nptrs2 ++;
-  }
-  *res = 0;
-  return (*fptr)(arg1, arg2);
-}
-
-double byname3(char* fname, double arg1, double arg2, double arg3, int* res) {
-  int i;
-  double (*fptr)(double, double, double) = 0;
-  if (!handle) {
-    printf("byname3 %s,%f,%f,%f: library not open\n", fname, arg1, arg2, arg3);
-    *res = 1;
-    return 0.0;
-  }
-  for (i=0;i<nptrs3;i++) {
-    if (!strcmp(fnames3[i], fname)) {
-      fptr = fptra3[i];
-    }
-  }
-  if (!fptr) {
-    if (nptrs3 >= MAXFN) {
-      printf("byname3 %s,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3);
-      *res = 2;
-      return 0.0;
-    }
-    fptr = (double (*)(double, double, double))dlsym(handle, fname);
-    if (!fptr) {
-      printf("byname3 %s,%f,%f,%f: function not found\n", fname, arg1, arg2, arg3);
-      *res = 3;
-      return 0.0;
-    }
-    fptra3[nptrs3] = fptr;
-    fnames3[nptrs3] = (char*)malloc((strlen(fname)+1)*sizeof(char));
-    strcpy(fnames3[nptrs3], fname);
-    nptrs3 ++;
-  }
-  *res = 0;
-  return (*fptr)(arg1, arg2, arg3);
-}
-
-double byname4(char* fname, double arg1, double arg2, double arg3, double arg4, int* res) {
-  int i;
-  double (*fptr)(double, double, double, double) = 0;
-  if (!handle) {
-    printf("byname4 %s,%f,%f,%f,%f: library not open\n", fname, arg1, arg2, arg3, arg4);
-    *res = 1;
-    return 0.0;
-  }
-  for (i=0;i<nptrs4;i++) {
-    if (!strcmp(fnames4[i], fname)) {
-      fptr = fptra4[i];
-    }
-  }
-  if (!fptr) {
-    if (nptrs4 >= MAXFN) {
-      printf("byname4 %s,%f,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3, arg4);
-      *res = 2;
-      return 0.0;
-    }
-    fptr = (double (*)(double, double, double, double))dlsym(handle, fname);
-    if (!fptr) {
-      printf("byname4 %s,%f,%f,%f,%f: function not found\n", fname, arg1, arg2, arg3, arg4);
-      *res = 3;
-      return 0.0;
-    }
-    fptra4[nptrs4] = fptr;
-    fnames4[nptrs4] = (char*)malloc((strlen(fname)+1)*sizeof(char));
-    strcpy(fnames4[nptrs4], fname);
-    nptrs4 ++;
-  }
-  *res = 0;
-  return (*fptr)(arg1, arg2, arg3, arg4);
-}
-
-int init(char* lib) {
-  handle = dlopen(lib, RTLD_LAZY);
-  if (!handle) {
-    printf("%s load result: %p\n", lib, handle);
-    return 0;
-  }
-  fptra = malloc(MAXFN*sizeof(void*));
-  fptra2 = malloc(MAXFN*sizeof(void*));
-  fptra3 = malloc(MAXFN*sizeof(void*));
-  fptra4 = malloc(MAXFN*sizeof(void*));
-  fnames = (char**)malloc(MAXFN*sizeof(char*));
-  fnames2 = (char**)malloc(MAXFN*sizeof(char*));
-  fnames3 = (char**)malloc(MAXFN*sizeof(char*));
-  fnames4 = (char**)malloc(MAXFN*sizeof(char*));
-  if (!fptra || !fnames || !fptra2 || !fnames2 || !fptra3 || !fnames3 || !fptra4 || !fnames4) {
-    printf("%s malloc failed\n", lib);
-    return 0;
-  }
-  return 1;
-}
-
-void tidy() {
-  if (handle) {
-    dlclose(handle);
-    handle = 0;
-  }
-  if (fptra) {
-    free((void*)fptra);
-    fptra = 0;
-  }
-  if (fptra2) {
-    free((void*)fptra2);
-    fptra2 = 0;
-  }
-  if (fptra3) {
-    free((void*)fptra3);
-    fptra3 = 0;
-  }
-  if (fptra4) {
-    free((void*)fptra4);
-    fptra4 = 0;
-  }
-  if (fnames) {
-    free((void*)fnames);
-    fnames = 0;
-  }
-  if (fnames2) {
-    free((void*)fnames2);
-    fnames2 = 0;
-  }
-  if (fnames3) {
-    free((void*)fnames3);
-    fnames3 = 0;
-  }
-  if (fnames4) {
-    free((void*)fnames4);
-    fnames4 = 0;
-  }
-  nptrs = 0;
-  nptrs2 = 0;
-  nptrs3 = 0;
-  nptrs4 = 0;
-}
+#cgo LDFLAGS: -ldl -lbyname -L../../ -L./
+#include "../../byname.h"
 */
 import "C"
 
@@ -239,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -257,6 +39,7 @@ type fparCtx struct {
 }
 
 func (ctx *fparCtx) cpy() fparCtx {
+	// we just copy references to maps, not maps, but init is only called from single thread and then map is only read not modified
 	return fparCtx{
 		buffer:   ctx.buffer,
 		rbuffer:  ctx.rbuffer,
@@ -568,20 +351,7 @@ func (ctx *fparCtx) fparF(args []float64) (float64, error) {
 // fpar: end
 
 // images2BW: convert given images to bw: iname.ext -> bw_iname.ext, dir/iname.ext -> dir/bw_iname.ext
-// Other parameters are set via env variable:
-// Q - jpeg quality 1-100, will use library default if not specified
-// R - relative red usage for generating gray pixel, 1 if not specified
-// G - relative green usage for generating gray pixel, 1 if not specified
-// B - relative blue usage for generating gray pixel, 1 if not specified
-// (R+G+B) will be normalized to sum to 1, so their sum must be positive
-// R=0.2125 G=0.7154 B=0.0721 is a suggested configuration
-// LO - when calculating intensity range, discard values than are in this lower %, for example 3
-// HI - when calculating intensity range, discard values that are in this higher %, for example 3
-// GA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)->(x,pow(x, GA)) mapping
-// F - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
-// LIB - if F is used and F calls external functions, thery need to be loaded for this C library
-// N - set number of CPUs to process data
-// O - eventual overwite file name config, example: ".jpg:.png"
+// Other parameters are set via env variables (see main() function it describes all env params):
 func images2BW(args []string) error {
 	// F, LIB processing
 	var fctx fparCtx
@@ -749,6 +519,7 @@ func images2BW(args []string) error {
 	// Iterate given files
 	n := len(args)
 	for k, fn := range args {
+		dtStart := time.Now()
 		fk := float64(k) / float64(n)
 		fmt.Printf("%d/%d %s...", k+1, n, fn)
 		_ = flush.Flush()
@@ -777,6 +548,7 @@ func images2BW(args []string) error {
 		minGs := uint16(0xffff)
 		maxGs := uint16(0)
 
+		dtStartH := time.Now()
 		for i := 0; i < x; i++ {
 			for j := 0; j < y; j++ {
 				// target.Set(i, j, m.At(i, j))
@@ -821,9 +593,11 @@ func images2BW(args []string) error {
 			}
 		}
 		if loI >= hiI {
+			_ = reader.Close()
 			return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
 		}
 		mult := 65535.0 / float64(hiI-loI)
+		dtEndH := time.Now()
 		fmt.Printf(" gray: (%d, %d) int: (%d, %d) mult: %f...", minGs, maxGs, loI, hiI, mult)
 		_ = flush.Flush()
 
@@ -836,6 +610,7 @@ func images2BW(args []string) error {
 			ctxInUse[i] = false
 		}
 		var cmtx = &sync.Mutex{}
+		dtStartF := time.Now()
 		for ii := 0; ii < x; ii++ {
 			go func(c chan error, i int) {
 				cmtx.Lock()
@@ -910,6 +685,7 @@ func images2BW(args []string) error {
 			if nThreads == thrN {
 				e := <-che
 				if e != nil {
+					_ = reader.Close()
 					return e
 				}
 				nThreads--
@@ -918,10 +694,13 @@ func images2BW(args []string) error {
 		for nThreads > 0 {
 			e := <-che
 			if e != nil {
+				_ = reader.Close()
 				return e
 			}
 			nThreads--
 		}
+		dtEndF := time.Now()
+		pps := (all / dtEndF.Sub(dtStartF).Seconds()) / 1048576.0
 
 		// Close reader
 		err = reader.Close()
@@ -961,25 +740,46 @@ func images2BW(args []string) error {
 			ierr = gif.Encode(fi, target, nil)
 		}
 		if ierr != nil {
+			_ = fi.Close()
 			return ierr
 		}
 		err = fi.Close()
 		if err != nil {
 			return err
 		}
-		fmt.Printf(" %s\n", ofn)
+		dtEnd := time.Now()
+		fmt.Printf(" %s (time %v, hist %v, calc %v, MPPS: %.3f)\n", ofn, dtEnd.Sub(dtStart), dtEndH.Sub(dtStartH), dtEndF.Sub(dtStartF), pps)
 	}
 	return nil
 }
 
 func main() {
+	dtStart := time.Now()
 	if len(os.Args) > 1 {
 		err := images2BW(os.Args[1:])
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
 		}
 	} else {
 		fmt.Printf("Please provide at least one image to convert\n")
+		helpStr := `
+Environment variables:
+Q - jpeg quality 1-100, will use library default if not specified
+R - relative red usage for generating gray pixel, 1 if not specified
+G - relative green usage for generating gray pixel, 1 if not specified
+B - relative blue usage for generating gray pixel, 1 if not specified
+(R+G+B) will be normalized to sum to 1, so their sum must be positive
+R=0.2125 G=0.7154 B=0.0721 is a suggested configuration
+LO - when calculating intensity range, discard values than are in this lower %, for example 3
+HI - when calculating intensity range, discard values that are in this higher %, for example 3
+GA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)->(x,pow(x, GA)) mapping
+F - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
+LIB - if F is used and F calls external functions, thery need to be loaded for this C library
+N - set number of CPUs to process data
+O - eventual overwite file name config, example: ".jpg:.png"
+`
+		fmt.Printf("%s\n", helpStr)
 	}
+	dtEnd := time.Now()
+	fmt.Printf("Time: %v\n", dtEnd.Sub(dtStart))
 }

@@ -26,10 +26,10 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 - Example usage: `time LIB="/lib/aarch64-linux-gnu/libm-2.24.so" F="sin(x1*3.14159)^2" jpegbw in.jpg`.
 - You can use max up to 4-args functions, example: `R=0.25 G=0.6 B=0.15 LO=3 HI=3 LIB="/usr/lib/libm.dylib" F="fma(x2,x3,x1)" ./jpegbw in.png`.
 - Other: `time R=0.25 G=0.6 B=0.15 LO=6 HI=6 LIB="/usr/lib/libm.dylib" F="((fma(x2,x3,x1)+fma(1-x2,x3,x1)+fma(x2,1-x3,x1)+fma(1-x2,1-x3,x1))/4)^2" ./jpegbw in.png`.
-- Using local C library `jpegbw.so`: `LIB="./jpegbw.so" F="func(x1)" ./jpegbw in.png`.
-- After `make install` just: `LIB="jpegbw.so" F="func(x1)" jpegbw in.png`.
-- Toon function: `LIB="jpegbw.so" F="toon(x1,5)" jpegbw in.png`.
-- Vingette function: `LIB="jpegbw.so" F="vingette(x1, x2, x3)" jpegbw in.png`.
+- Using local C library `libjepgbw.so`: `LIB="./libjepgbw.so" F="func(x1)" ./jpegbw in.png`.
+- After `make install` just: `LIB="libjepgbw.so" F="func(x1)" jpegbw in.png`.
+- Toon function: `LIB="libjepgbw.so" F="toon(x1,5)" jpegbw in.png`.
+- Vingette function: `LIB="libjepgbw.so" F="vingette(x1, x2, x3)" jpegbw in.png`.
 
 # multithreading
 
@@ -42,3 +42,13 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 # other
 
 - Use `O=".jpg:.png"` to overwite file name config. This will save JPG as PNG.
+
+# build
+
+- `make && make install`.
+- If you don't have tools required for `make check` do `sudo ./deps.sh`.
+- If you still have any issues with additional check, compile binaries directly: `make jpegbw libjpegbw.so libbyname.so`.
+
+# install
+
+- First build and then `sudo make install`.

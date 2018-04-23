@@ -13,19 +13,22 @@ GO_USEDEXPORTS=usedexports
 GO_ERRCHECK=errcheck -asserts -ignore '[FS]?[Pp]rint*'
 BINARIES=jpegbw
 STRIP=strip
-C_LIBS=jpegbw.so
+C_LIBS=libjpegbw.so libbyname.so
 C_ENV=
 C_LINK=-lm
-C_FILES=jpegbw.h jpegbw.c
+C_FILES=jpegbw.h jpegbw.c byname.h byname.c
 GCC=gcc
 
 all: check ${BINARIES} ${C_LIBS}
 
-jpegbw: cmd/jpegbw/jpegbw.go
+jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS}
 	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
 
-jpegbw.so: ${C_FILES}
-	${C_ENV} ${GCC} -shared -O3 -ffast-math -o jpegbw.so jpegbw.c ${C_LINK}
+libjpegbw.so: ${C_FILES}
+	${C_ENV} ${GCC} -shared -O3 -ffast-math -o libjpegbw.so jpegbw.c ${C_LINK}
+
+libbyname.so: ${C_FILES}
+	${C_ENV} ${GCC} -shared -O3 -ffast-math -o libbyname.so byname.c ${C_LINK}
 
 fmt: ${GO_BIN_FILES}
 	./for_each_go_file.sh "${GO_FMT}"
