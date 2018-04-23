@@ -1,7 +1,7 @@
 package jpegbw
 
 /*
-#cgo LDFLAGS: -ldl -lbyname -L./
+#cgo LDFLAGS: -ldl -lm -lbyname -L./
 #include "byname.h"
 */
 import "C"

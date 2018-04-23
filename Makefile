@@ -16,12 +16,12 @@ BINARIES=jpegbw
 STRIP=strip
 C_LIBS=libjpegbw.so libbyname.so
 C_ENV=
-C_LINK=-lm
+C_LINK=-lm -ldl
 C_FILES=jpegbw.h jpegbw.c byname.h byname.c
-C_FLAGS=-Wall -ansi -pedantic -shared -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion -Werror
+C_FLAGS=-Wall -ansi -pedantic -shared -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion
 GCC=gcc
 
-all: check ${BINARIES} ${C_LIBS}
+all: ${C_LIBS} check ${BINARIES}
 
 jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
@@ -50,7 +50,7 @@ const: ${GO_BIN_FILES} ${GO_LIB_FILES}
 usedexports: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	${GO_USEDEXPORTS} ./...
 
-errcheck: ${GO_BIN_FILES}
+errcheck: ${GO_BIN_FILES} ${C_LIBS}
 	${GO_ERRCHECK} ./...
 
 check: fmt lint imports vet const usedexports errcheck

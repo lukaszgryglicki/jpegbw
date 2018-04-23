@@ -9,6 +9,13 @@ double toon(double arg, double n) {
 }
 
 double vingette(double arg, double x, double y) {
+  /* alternative */
+  /*
+  double hx, hy;
+  hx = sqrt(2.)*(x-.5);
+  hy = sqrt(2.)*(y-.5);
+  return sqrt(arg)*(1.-sqrt(hx*hx+hy*hy));
+  */
   return sqrt(arg)*(1.-hypot(sqrt(2.)*(x-.5), sqrt(2.)*(y-.5)));
 }
 
