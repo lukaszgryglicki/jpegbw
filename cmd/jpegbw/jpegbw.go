@@ -23,11 +23,12 @@ static int nptrs2 = 0;
 static int nptrs3 = 0;
 static int nptrs4 = 0;
 
-double byname(char* fname, double arg) {
+double byname(char* fname, double arg, int* res) {
   int i;
   double (*fptr)(double) = 0;
   if (!handle) {
     printf("byname %s,%f: library not open\n", fname, arg);
+    *res = 1;
     return 0.0;
   }
   for (i=0;i<nptrs;i++) {
@@ -38,11 +39,13 @@ double byname(char* fname, double arg) {
   if (!fptr) {
     if (nptrs >= MAXFN) {
       printf("byname %s,%f: function table full\n", fname, arg);
+      *res = 2;
       return 0.0;
     }
     fptr = (double (*)(double))dlsym(handle, fname);
     if (!fptr) {
       printf("byname %s,%f: function not found\n", fname, arg);
+      *res = 3;
       return 0.0;
     }
     fptra[nptrs] = fptr;
@@ -50,14 +53,16 @@ double byname(char* fname, double arg) {
     strcpy(fnames[nptrs], fname);
     nptrs ++;
   }
+  *res = 0;
   return (*fptr)(arg);
 }
 
-double byname2(char* fname, double arg1, double arg2) {
+double byname2(char* fname, double arg1, double arg2, int* res) {
   int i;
   double (*fptr)(double, double) = 0;
   if (!handle) {
     printf("byname2 %s,%f,%f: library not open\n", fname, arg1, arg2);
+    *res = 1;
     return 0.0;
   }
   for (i=0;i<nptrs2;i++) {
@@ -68,11 +73,13 @@ double byname2(char* fname, double arg1, double arg2) {
   if (!fptr) {
     if (nptrs2 >= MAXFN) {
       printf("byname2 %s,%f,%f: function table full\n", fname, arg1, arg2);
+      *res = 2;
       return 0.0;
     }
     fptr = (double (*)(double, double))dlsym(handle, fname);
     if (!fptr) {
       printf("byname2 %s,%f,%f: function not found\n", fname, arg1, arg2);
+      *res = 3;
       return 0.0;
     }
     fptra2[nptrs2] = fptr;
@@ -80,14 +87,16 @@ double byname2(char* fname, double arg1, double arg2) {
     strcpy(fnames2[nptrs2], fname);
     nptrs2 ++;
   }
+  *res = 0;
   return (*fptr)(arg1, arg2);
 }
 
-double byname3(char* fname, double arg1, double arg2, double arg3) {
+double byname3(char* fname, double arg1, double arg2, double arg3, int* res) {
   int i;
   double (*fptr)(double, double, double) = 0;
   if (!handle) {
     printf("byname3 %s,%f,%f,%f: library not open\n", fname, arg1, arg2, arg3);
+    *res = 1;
     return 0.0;
   }
   for (i=0;i<nptrs3;i++) {
@@ -98,11 +107,13 @@ double byname3(char* fname, double arg1, double arg2, double arg3) {
   if (!fptr) {
     if (nptrs3 >= MAXFN) {
       printf("byname3 %s,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3);
+      *res = 2;
       return 0.0;
     }
     fptr = (double (*)(double, double, double))dlsym(handle, fname);
     if (!fptr) {
       printf("byname3 %s,%f,%f,%f: function not found\n", fname, arg1, arg2, arg3);
+      *res = 3;
       return 0.0;
     }
     fptra3[nptrs3] = fptr;
@@ -110,14 +121,16 @@ double byname3(char* fname, double arg1, double arg2, double arg3) {
     strcpy(fnames3[nptrs3], fname);
     nptrs3 ++;
   }
+  *res = 0;
   return (*fptr)(arg1, arg2, arg3);
 }
 
-double byname4(char* fname, double arg1, double arg2, double arg3, double arg4) {
+double byname4(char* fname, double arg1, double arg2, double arg3, double arg4, int* res) {
   int i;
   double (*fptr)(double, double, double, double) = 0;
   if (!handle) {
     printf("byname4 %s,%f,%f,%f,%f: library not open\n", fname, arg1, arg2, arg3, arg4);
+    *res = 1;
     return 0.0;
   }
   for (i=0;i<nptrs4;i++) {
@@ -128,11 +141,13 @@ double byname4(char* fname, double arg1, double arg2, double arg3, double arg4) 
   if (!fptr) {
     if (nptrs4 >= MAXFN) {
       printf("byname4 %s,%f,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3, arg4);
+      *res = 2;
       return 0.0;
     }
     fptr = (double (*)(double, double, double, double))dlsym(handle, fname);
     if (!fptr) {
       printf("byname4 %s,%f,%f,%f,%f: function not found\n", fname, arg1, arg2, arg3, arg4);
+      *res = 3;
       return 0.0;
     }
     fptra4[nptrs4] = fptr;
@@ -140,6 +155,7 @@ double byname4(char* fname, double arg1, double arg2, double arg3, double arg4) 
     strcpy(fnames4[nptrs4], fname);
     nptrs4 ++;
   }
+  *res = 0;
   return (*fptr)(arg1, arg2, arg3, arg4);
 }
 
@@ -373,6 +389,7 @@ func (ctx *fparCtx) double(in float64) float64 {
 
 func (ctx *fparCtx) callFunction(ident string) (float64, bool) {
 	ctx.skipBlanks()
+	res := 10
 	if ctx.ch == "(" {
 		cident := C.CString(ident)
 		defer C.free(unsafe.Pointer(cident))
@@ -380,44 +397,64 @@ func (ctx *fparCtx) callFunction(ident string) (float64, bool) {
 		ctx.skipBlanks()
 		v := 0.0
 		if ctx.ch == ")" {
-			v = float64(C.byname(cident, C.double(res1)))
+			v = float64(C.byname(cident, C.double(res1), (*C.int)(unsafe.Pointer(&res))))
 			ctx.readNextChar()
 			ctx.skipBlanks()
+			if res != 0 {
+				ctx.er(fmt.Errorf("error %d calling 1 argument function %s(%f): position: (%d/%d,ch=%s)", res, ident, res1, ctx.position, ctx.maxpos, ctx.ch))
+				return 0.0, false
+			}
 		} else if ctx.ch == "," {
 			ctx.skipBlanks()
 			res2 := ctx.expression()
 			ctx.skipBlanks()
 			if ctx.ch == ")" {
-				v = float64(C.byname2(cident, C.double(res1), C.double(res2)))
+				v = float64(C.byname2(cident, C.double(res1), C.double(res2), (*C.int)(unsafe.Pointer(&res))))
 				ctx.readNextChar()
 				ctx.skipBlanks()
+				if res != 0 {
+					ctx.er(fmt.Errorf("error %d calling 2 arguments function %s(%f,%f): position: (%d/%d,ch=%s)", res, ident, res1, res2, ctx.position, ctx.maxpos, ctx.ch))
+					return 0.0, false
+				}
 			} else if ctx.ch == "," {
 				ctx.skipBlanks()
 				res3 := ctx.expression()
 				ctx.skipBlanks()
 				if ctx.ch == ")" {
-					v = float64(C.byname3(cident, C.double(res1), C.double(res2), C.double(res3)))
+					v = float64(C.byname3(cident, C.double(res1), C.double(res2), C.double(res3), (*C.int)(unsafe.Pointer(&res))))
 					ctx.readNextChar()
 					ctx.skipBlanks()
+					if res != 0 {
+						ctx.er(fmt.Errorf("error %d calling 3 arguments function %s(%f,%f,%f): position: (%d/%d,ch=%s)", res, ident, res1, res2, res3, ctx.position, ctx.maxpos, ctx.ch))
+						return 0.0, false
+					}
 				} else if ctx.ch == "," {
 					ctx.skipBlanks()
 					res4 := ctx.expression()
 					ctx.skipBlanks()
 					if ctx.ch == ")" {
-						v = float64(C.byname4(cident, C.double(res1), C.double(res2), C.double(res3), C.double(res4)))
+						v = float64(C.byname4(cident, C.double(res1), C.double(res2), C.double(res3), C.double(res4), (*C.int)(unsafe.Pointer(&res))))
 						ctx.readNextChar()
 						ctx.skipBlanks()
+						if res != 0 {
+							ctx.er(fmt.Errorf("error %d calling 24 arguments function %s(%f,%f,%f,%f): position: (%d/%d,ch=%s)", res, ident, res1, res2, res3, res4, ctx.position, ctx.maxpos, ctx.ch))
+							return 0.0, false
+						}
 					} else {
 						ctx.er(fmt.Errorf("expected: ')' after 4 arguments function %s(%f,%f,%f: position: (%d/%d,ch=%s)", ident, res1, res2, res3, ctx.position, ctx.maxpos, ctx.ch))
+						return 0.0, false
 					}
 				} else {
 					ctx.er(fmt.Errorf("expected: ')' after 3 arguments function %s(%f,%f,: position: (%d/%d,ch=%s)", ident, res1, res2, ctx.position, ctx.maxpos, ctx.ch))
+					return 0.0, false
 				}
 			} else {
 				ctx.er(fmt.Errorf("expected: ')' after 2 arguments function %s(%f,: position: (%d/%d,ch=%s)", ident, res1, ctx.position, ctx.maxpos, ctx.ch))
+				return 0.0, false
 			}
 		} else {
 			ctx.er(fmt.Errorf("expected: ')' after 1 argument function %s: position: (%d/%d,ch=%s)", ident, ctx.position, ctx.maxpos, ctx.ch))
+			return 0.0, false
 		}
 		return v, true
 	}
