@@ -30,6 +30,7 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 - After `make install` just: `LIB="libjepgbw.so" F="func(x1)" jpegbw in.png`.
 - Toon function: `LIB="libjepgbw.so" F="toon(x1,5)" jpegbw in.png`.
 - Vingette function: `LIB="libjepgbw.so" F="vingette(x1, x2, x3)" jpegbw in.png`.
+- Alpha function: `LIB="libjepgbw.so" F="alpha(x1, x2, x3, 1.4)" jpegbw in.png`.
 
 # multithreading
 
