@@ -164,10 +164,6 @@ func (ctx *FparCtx) readIdent() string {
 	return ident
 }
 
-func (ctx *FparCtx) double(in float64) float64 {
-	return 2.0 * in
-}
-
 func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 	ctx.skipBlanks()
 	res := 10
