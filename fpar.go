@@ -26,6 +26,7 @@ type FparCtx struct {
 	nvar     int
 	digits   map[string]struct{}
 	alphas   map[string]struct{}
+	cidents  map[string]*C.char
 }
 
 // Cpy - copies one context to the another, it is partially shallow copy (we copy references to maps not maps)
@@ -42,6 +43,7 @@ func (ctx *FparCtx) Cpy() FparCtx {
 		nvar:     ctx.nvar,
 		digits:   ctx.digits,
 		alphas:   ctx.alphas,
+		cidents:  ctx.cidents,
 	}
 }
 
@@ -54,7 +56,22 @@ func (ctx *FparCtx) Init(lib string) bool {
 
 // Tidy - free memory, release context, deallocate insternal C structs
 func (ctx *FparCtx) Tidy() {
+	ctx.freeCIdents()
 	C.tidy()
+}
+
+func (ctx *FparCtx) freeCIdents() {
+	if ctx.cidents != nil {
+		for _, cident := range ctx.cidents {
+			C.free(unsafe.Pointer(cident))
+		}
+		ctx.cidents = nil
+	}
+}
+
+func (ctx *FparCtx) makeCIdents() {
+	ctx.freeCIdents()
+	ctx.cidents = make(map[string]*C.char)
 }
 
 func (ctx *FparCtx) zeroVect() []float64 {
@@ -108,6 +125,7 @@ func (ctx *FparCtx) FparFunction(def string) error {
 	ctx.maxpos = len(ctx.buffer)
 	ctx.makeDigits()
 	ctx.makeAlphas()
+	ctx.makeCIdents()
 	ctx.err = nil
 	return nil
 }
@@ -168,8 +186,14 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 	ctx.skipBlanks()
 	res := 10
 	if ctx.ch == "(" {
-		cident := C.CString(ident)
-		defer C.free(unsafe.Pointer(cident))
+		// cident := C.CString(ident)
+		// defer C.free(unsafe.Pointer(cident))
+		var cident *C.char
+		cident, ok := ctx.cidents[ident]
+		if !ok {
+			cident = C.CString(ident)
+			ctx.cidents[ident] = cident
+		}
 		res1 := ctx.expression()
 		ctx.skipBlanks()
 		v := 0.0
