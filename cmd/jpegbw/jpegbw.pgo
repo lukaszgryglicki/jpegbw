@@ -18,6 +18,39 @@ import (
 	"time"
 )
 
+type intHist map[uint16]int
+type floatHist map[uint16]float64
+
+func (m intHist) str() string {
+	s := ""
+	for i := uint16(0); true; i++ {
+		v := m[i]
+		if v > 0 {
+			s += fmt.Sprintf("%d => %d\n", i, m[i])
+		}
+		if i == 0xffff {
+			break
+		}
+	}
+	return s
+}
+
+func (m floatHist) str() string {
+	s := ""
+	prev := -1.0
+	for i := uint16(0); true; i++ {
+		v := m[i]
+		if v > 0.00001 && v < 99.99999 && math.Abs(v-prev) > 0.00001 {
+			s += fmt.Sprintf("%d => %.5f%%\n", i, m[i])
+		}
+		prev = v
+		if i == 0xffff {
+			break
+		}
+	}
+	return s
+}
+
 // images2BW: convert given images to bw: iname.ext -> bw_iname.ext, dir/iname.ext -> dir/bw_iname.ext
 // Other parameters are set via env variables (see main() function it describes all env params):
 func images2BW(args []string) error {
@@ -193,6 +226,7 @@ func images2BW(args []string) error {
 		_ = flush.Flush()
 
 		// Input
+		dtStartI := time.Now()
 		reader, err := os.Open(fn)
 		if err != nil {
 			return err
@@ -207,12 +241,15 @@ func images2BW(args []string) error {
 		bounds := m.Bounds()
 		x := bounds.Max.X
 		y := bounds.Max.Y
+		dtEndI := time.Now()
+		fmt.Printf(" (%d x %d)...", x, y)
+		_ = flush.Flush()
 
 		// Output
 		target := image.NewGray16(image.Rect(0, 0, x, y))
 
 		// Convert
-		hist := make(map[uint16]int)
+		hist := make(intHist)
 		minGs := uint16(0xffff)
 		maxGs := uint16(0)
 
@@ -221,7 +258,7 @@ func images2BW(args []string) error {
 			for j := 0; j < y; j++ {
 				// target.Set(i, j, m.At(i, j))
 				pr, pg, pb, _ := m.At(i, j).RGBA()
-				// fmt.Printf("%d,%d,%d\n", pr, pg, pb)
+				// debug2: fmt.Printf("(%d,%d,%d)\n", pr, pg, pb)
 				gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
 				if gs < minGs {
 					minGs = gs
@@ -231,12 +268,12 @@ func images2BW(args []string) error {
 				}
 				hist[gs]++
 			}
-
 		}
+		// info: fmt.Printf("hist: %+v\n", hist.str())
 
 		// Calculations
 		all := float64(x * y)
-		histCum := make(map[uint16]float64)
+		histCum := make(floatHist)
 		sum := 0
 		for i := uint16(0); true; i++ {
 			sum += hist[i]
@@ -267,6 +304,7 @@ func images2BW(args []string) error {
 		mult := 65535.0 / float64(hiI-loI)
 		dtEndH := time.Now()
 		fmt.Printf(" gray: (%d, %d) int: (%d, %d) mult: %f...", minGs, maxGs, loI, hiI, mult)
+		// info: fmt.Printf("histCum: %+v\n", histCum.str())
 		_ = flush.Flush()
 
 		che := make(chan error)
@@ -281,6 +319,7 @@ func images2BW(args []string) error {
 		dtStartF := time.Now()
 		for ii := 0; ii < x; ii++ {
 			go func(c chan error, i int) {
+				// debug: fmt.Printf("line: %d/%d\n", i, x)
 				cmtx.Lock()
 				cNum := -1
 				for t := 0; t < thrN; t++ {
@@ -381,6 +420,7 @@ func images2BW(args []string) error {
 		if overB {
 			ifn = strings.Replace(fn, overFrom, overTo, -1)
 		}
+		// info: fmt.Printf("filename: %s -> %s\n", fn, ifn)
 
 		// Output name
 		ary := strings.Split(ifn, "/")
@@ -393,8 +433,10 @@ func images2BW(args []string) error {
 			return err
 		}
 		lfn := strings.ToLower(ifn)
+		// info: fmt.Printf("output filename: %s, lower case %s\n", ofn, lfn)
 
 		// Output write
+		dtStartO := time.Now()
 		var ierr error
 		if strings.Contains(lfn, ".png") {
 			ierr = png.Encode(fi, target)
@@ -416,7 +458,10 @@ func images2BW(args []string) error {
 			return err
 		}
 		dtEnd := time.Now()
-		fmt.Printf(" %s (time %v, hist %v, calc %v, MPPS: %.3f)\n", ofn, dtEnd.Sub(dtStart), dtEndH.Sub(dtStartH), dtEndF.Sub(dtStartF), pps)
+		fmt.Printf(
+			" %s (time %v, load %v, hist %v, calc %v, save %v, MPPS: %.3f)\n",
+			ofn, dtEnd.Sub(dtStart), dtEndI.Sub(dtStartI), dtEndH.Sub(dtStartH), dtEndF.Sub(dtStartF), dtEnd.Sub(dtStartO), pps,
+		)
 	}
 	return nil
 }
