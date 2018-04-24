@@ -66,22 +66,26 @@ func gengo(args []string) error {
 				lineOri := scanner.Text()
 				line := strings.TrimSpace(lineOri)
 				lLine := len(line)
+				uncommented := false
 				for i, marker := range defa {
 					lMarker := ldefa[i]
 					if lLine >= lMarker && line[:lMarker] == marker {
 						idx := strings.Index(lineOri, line)
-						newLine := lineOri[:idx] + line[lMarker:] + "\n"
+						newLine := lineOri[:idx] + line[lMarker:] + " " + marker + "\n"
 						_, err := fout.WriteString(newLine)
 						if err != nil {
 							c <- err
 							return
 						}
-					} else {
-						_, err := fout.WriteString(lineOri + "\n")
-						if err != nil {
-							c <- err
-							return
-						}
+						uncommented = true
+						break
+					}
+				}
+				if !uncommented {
+					_, err := fout.WriteString(lineOri + "\n")
+					if err != nil {
+						c <- err
+						return
 					}
 				}
 			}

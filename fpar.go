@@ -31,7 +31,7 @@ type FparCtx struct {
 
 // Cpy - copies one context to the another, it is partially shallow copy (we copy references to maps not maps)
 func (ctx *FparCtx) Cpy() FparCtx {
-	// debug: fmt.Printf("Copying context\n")
+	// debug: fmt.Printf("copying context\n")
 	// We just copy references to maps, not maps, but init is only called from single thread and then map is only read not modified
 	return FparCtx{
 		buffer:   ctx.buffer,
@@ -50,7 +50,7 @@ func (ctx *FparCtx) Cpy() FparCtx {
 
 // Init - initialize context, allocate internal C structs
 func (ctx *FparCtx) Init(lib string) bool {
-	// debug: fmt.Printf("Init library: %s\n", lib)
+	// debug: fmt.Printf("init library: %s\n", lib)
 	clib := C.CString(lib)
 	defer C.free(unsafe.Pointer(clib))
 	return C.init(clib) == 1
@@ -86,7 +86,7 @@ func (ctx *FparCtx) zeroVect() []float64 {
 
 func (ctx *FparCtx) er(e error) {
 	// debug: if e != nil {
-	// debug:   fmt.Printf("Setting error: %v, current context error: %v\n", e, ctx.err)
+	// debug:   fmt.Printf("Setting error: %v, current context error: %v, position: %s\n", e, ctx.err, ctx.pos())
 	// debug: }
 	if e != nil && ctx.err == nil {
 		ctx.err = e
@@ -110,13 +110,27 @@ func (ctx *FparCtx) makeAlphas() {
 	}
 }
 
+func (ctx *FparCtx) pos() string {
+	s1 := ""
+	s2 := ""
+	if ctx.position > 0 {
+		s1 = ctx.buffer[:ctx.position-1]
+	}
+	if ctx.position < ctx.maxpos {
+		s2 = ctx.buffer[ctx.position:]
+	}
+	return fmt.Sprintf("'%s;%s' (%d/%d,ch=%s)", s1, s2, ctx.position, ctx.maxpos, ctx.ch)
+}
+
 func (ctx *FparCtx) isDigit() bool {
 	_, ok := ctx.digits[ctx.ch]
+	// debug2: fmt.Printf("isDigit: position: %s -> %t\n", ctx.pos(), ok)
 	return ok
 }
 
 func (ctx *FparCtx) isAlpha() bool {
 	_, ok := ctx.alphas[ctx.ch]
+	// debug2: fmt.Printf("isAlpha: position: %s -> %t\n", ctx.pos(), ok)
 	return ok
 }
 
@@ -147,9 +161,11 @@ func (ctx *FparCtx) FparOK(nvar int) error {
 
 func (ctx *FparCtx) skipBlanks() {
 	if ctx.ch == ";" || ctx.position >= ctx.maxpos {
+		// debug2: fmt.Printf("skipBlanks: position: %s: out of range or ;\n", ctx.pos())
 		return
 	}
 	for strings.TrimSpace(ctx.ch) == "" && ctx.position < ctx.maxpos {
+		// debug2: fmt.Printf("skipBlanks: position: %s ...\n", ctx.pos())
 		ctx.readNextChar()
 	}
 }
@@ -158,6 +174,8 @@ func (ctx *FparCtx) readNextChar() {
 	if ctx.position < ctx.maxpos && ctx.ch != ";" {
 		ctx.ch = ctx.buffer[ctx.position : ctx.position+1]
 		ctx.position++
+		// debug: } else {
+		// debug:   fmt.Printf("readNextChar: position: %s: out of range or ;\n", ctx.pos())
 	}
 }
 
@@ -168,6 +186,7 @@ func (ctx *FparCtx) readNumber() float64 {
 		ctx.readNextChar()
 	}
 	f, err := strconv.ParseFloat(digitStr, 64)
+	// debug: fmt.Printf("readNumber: position: %s -> (%s,%f,%v)\n", ctx.pos(), digitStr, f, err)
 	ctx.er(err)
 	return f
 }
@@ -181,13 +200,15 @@ func (ctx *FparCtx) readIdent() string {
 			ctx.readNextChar()
 		}
 	} else {
-		ctx.er(fmt.Errorf("readIdent: expected function name or variable: position: (%d/%d,ch=%s)", ctx.position, ctx.maxpos, ctx.ch))
+		ctx.er(fmt.Errorf("readIdent: expected function name or variable: position: %s", ctx.pos()))
 	}
 	ctx.skipBlanks()
+	// debug: fmt.Printf("readIdent: position: %s -> %s\n", ctx.pos(), ident)
 	return ident
 }
 
 func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
+	// debug: fmt.Printf("callFunction: position: %s %s(...)\n", ctx.pos(), ident)
 	ctx.skipBlanks()
 	res := 10
 	if ctx.ch == "(" {
@@ -198,16 +219,18 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 		if !ok {
 			cident = C.CString(ident)
 			ctx.cidents[ident] = cident
+			// debug: fmt.Printf("callFunction: position: %s added '%s' to cache\n", ctx.pos(), ident)
 		}
 		res1 := ctx.expression()
 		ctx.skipBlanks()
 		v := 0.0
 		if ctx.ch == ")" {
 			v = float64(C.byname(cident, C.double(res1), (*C.int)(unsafe.Pointer(&res))))
+			// info: fmt.Printf("callFunction: position: %s %s(%f) -> (%f,%d)\n", ctx.pos(), ident, res1, v, res)
 			ctx.readNextChar()
 			ctx.skipBlanks()
 			if res != 0 {
-				ctx.er(fmt.Errorf("error %d calling 1 argument function %s(%f): position: (%d/%d,ch=%s)", res, ident, res1, ctx.position, ctx.maxpos, ctx.ch))
+				ctx.er(fmt.Errorf("error %d calling 1 argument function %s(%f): position: %s", res, ident, res1, ctx.pos()))
 				return 0.0, false
 			}
 		} else if ctx.ch == "," {
@@ -216,10 +239,11 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 			ctx.skipBlanks()
 			if ctx.ch == ")" {
 				v = float64(C.byname2(cident, C.double(res1), C.double(res2), (*C.int)(unsafe.Pointer(&res))))
+				// info: fmt.Printf("callFunction: position: %s %s(%f,%f) -> (%f,%d)\n", ctx.pos(), ident, res1, res2, v, res)
 				ctx.readNextChar()
 				ctx.skipBlanks()
 				if res != 0 {
-					ctx.er(fmt.Errorf("error %d calling 2 arguments function %s(%f,%f): position: (%d/%d,ch=%s)", res, ident, res1, res2, ctx.position, ctx.maxpos, ctx.ch))
+					ctx.er(fmt.Errorf("error %d calling 2 arguments function %s(%f,%f): position: %s", res, ident, res1, res2, ctx.pos()))
 					return 0.0, false
 				}
 			} else if ctx.ch == "," {
@@ -228,10 +252,11 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 				ctx.skipBlanks()
 				if ctx.ch == ")" {
 					v = float64(C.byname3(cident, C.double(res1), C.double(res2), C.double(res3), (*C.int)(unsafe.Pointer(&res))))
+					// info: fmt.Printf("callFunction: position: %s %s(%f,%f,%f) -> (%f,%d)\n", ctx.pos(), ident, res1, res2, res3, v, res)
 					ctx.readNextChar()
 					ctx.skipBlanks()
 					if res != 0 {
-						ctx.er(fmt.Errorf("error %d calling 3 arguments function %s(%f,%f,%f): position: (%d/%d,ch=%s)", res, ident, res1, res2, res3, ctx.position, ctx.maxpos, ctx.ch))
+						ctx.er(fmt.Errorf("error %d calling 3 arguments function %s(%f,%f,%f): position: %s", res, ident, res1, res2, res3, ctx.pos()))
 						return 0.0, false
 					}
 				} else if ctx.ch == "," {
@@ -240,45 +265,50 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 					ctx.skipBlanks()
 					if ctx.ch == ")" {
 						v = float64(C.byname4(cident, C.double(res1), C.double(res2), C.double(res3), C.double(res4), (*C.int)(unsafe.Pointer(&res))))
+						// info: fmt.Printf("callFunction: position: %s %s(%f,%f,%f,%f) -> (%f,%d)\n", ctx.pos(), ident, res1, res2, res3, res4, v, res)
 						ctx.readNextChar()
 						ctx.skipBlanks()
 						if res != 0 {
-							ctx.er(fmt.Errorf("error %d calling 24 arguments function %s(%f,%f,%f,%f): position: (%d/%d,ch=%s)", res, ident, res1, res2, res3, res4, ctx.position, ctx.maxpos, ctx.ch))
+							ctx.er(fmt.Errorf("error %d calling 4 arguments function %s(%f,%f,%f,%f): position: %s", res, ident, res1, res2, res3, res4, ctx.pos()))
 							return 0.0, false
 						}
 					} else {
-						ctx.er(fmt.Errorf("expected: ')' after 4 arguments function %s(%f,%f,%f: position: (%d/%d,ch=%s)", ident, res1, res2, res3, ctx.position, ctx.maxpos, ctx.ch))
+						ctx.er(fmt.Errorf("expected: ')' after 4 arguments function %s(%f,%f,%f: position: %s", ident, res1, res2, res3, ctx.pos()))
 						return 0.0, false
 					}
 				} else {
-					ctx.er(fmt.Errorf("expected: ')' after 3 arguments function %s(%f,%f,: position: (%d/%d,ch=%s)", ident, res1, res2, ctx.position, ctx.maxpos, ctx.ch))
+					ctx.er(fmt.Errorf("expected: ')' after 3 arguments function %s(%f,%f,: position: %s", ident, res1, res2, ctx.pos()))
 					return 0.0, false
 				}
 			} else {
-				ctx.er(fmt.Errorf("expected: ')' after 2 arguments function %s(%f,: position: (%d/%d,ch=%s)", ident, res1, ctx.position, ctx.maxpos, ctx.ch))
+				ctx.er(fmt.Errorf("expected: ')' after 2 arguments function %s(%f,: position: %s", ident, res1, ctx.pos()))
 				return 0.0, false
 			}
 		} else {
-			ctx.er(fmt.Errorf("expected: ')' after 1 argument function %s: position: (%d/%d,ch=%s)", ident, ctx.position, ctx.maxpos, ctx.ch))
+			ctx.er(fmt.Errorf("expected: ')' after 1 argument function %s: position: %s", ident, ctx.pos()))
 			return 0.0, false
 		}
 		return v, true
 	}
-	ctx.er(fmt.Errorf("callFunction: expected '(' after %s: position: (%d/%d,ch=%s)", ident, ctx.position, ctx.maxpos, ctx.ch))
+	ctx.er(fmt.Errorf("callFunction: expected '(' after %s: position: %s", ident, ctx.pos()))
 	return 0.0, false
 }
 
 func (ctx *FparCtx) argVal(ident string) (float64, bool) {
 	if ident == "" {
+		// debug: fmt.Printf("argVal: position: %s '' -> 0,false\n", ctx.pos())
 		return 0.0, false
 	}
 	if ident[:1] == "x" {
 		num, err := strconv.Atoi(ident[1:])
 		if err != nil || num < 1 || num > ctx.nvar {
+			// debug: fmt.Printf("argVal: position: %s ident=%s -> (%d,%v) -> 0,false\n", ctx.pos(), ident, num, err)
 			return 0.0, false
 		}
+		// debug: fmt.Printf("argVal: position: %s ident=%s -> x%d -> %f,true\n", ctx.pos(), ident, num, ctx.arg[num-1])
 		return ctx.arg[num-1], true
 	}
+	// debug: fmt.Printf("argVal: position: %s ident=%s -> 0,false\n", ctx.pos(), ident)
 	return 0.0, false
 }
 
@@ -289,6 +319,7 @@ func (ctx *FparCtx) factor() float64 {
 	ctx.skipBlanks()
 	for ctx.ch == "+" || ctx.ch == "-" {
 		if ctx.ch == "-" {
+			// debug: fmt.Printf("factor: position: %s minus\n", ctx.pos())
 			minus *= -1.0
 		}
 		ctx.readNextChar()
@@ -297,13 +328,15 @@ func (ctx *FparCtx) factor() float64 {
 		f = ctx.readNumber()
 		ctx.skipBlanks()
 	} else if ctx.ch == "(" {
+		// debug: fmt.Printf("factor: position: %s new expression in (\n", ctx.pos())
 		f = ctx.expression()
 		ctx.skipBlanks()
 		if ctx.ch == ")" {
+			// debug: fmt.Printf("factor: position: %s expression in ) finished\n", ctx.pos())
 			ctx.readNextChar()
 			ctx.skipBlanks()
 		} else {
-			ctx.er(fmt.Errorf("expected: ')': position: (%d/%d,ch=%s)", ctx.position, ctx.maxpos, ctx.ch))
+			ctx.er(fmt.Errorf("expected: ')': position: %s", ctx.pos()))
 		}
 	} else {
 		ident := ctx.readIdent()
@@ -315,18 +348,21 @@ func (ctx *FparCtx) factor() float64 {
 			if gotVal {
 				f = val
 			} else {
-				ctx.er(fmt.Errorf("don't know what to do with '%s': position: (%d/%d,ch=%s)", ident, ctx.position, ctx.maxpos, ctx.ch))
+				ctx.er(fmt.Errorf("don't know what to do with '%s': position: %s", ident, ctx.pos()))
 			}
 		}
 	}
 	ctx.skipBlanks()
+	// debug: fmt.Printf("factor: position: %s -> %f\n", ctx.pos(), f * minus)
 	return f * minus
 }
 
 func (ctx *FparCtx) exponential() float64 {
 	f := ctx.factor()
 	for ctx.ch == "^" {
+		// debug: fmt.Printf("exponential: position: %s %f ^ ...\n", ctx.pos(), f)
 		f = math.Pow(f, ctx.exponential())
+		// debug: fmt.Printf("exponential: position: %s -> %f\n", ctx.pos(), f)
 	}
 	return f
 }
@@ -336,9 +372,13 @@ func (ctx *FparCtx) term() float64 {
 	for {
 		switch ctx.ch {
 		case "*":
+			// debug: fmt.Printf("term: position: %s %f * ...\n", ctx.pos(), f)
 			f *= ctx.exponential()
+			// debug: fmt.Printf("term: position: %s -> %f\n", ctx.pos(), f)
 		case "/":
+			// debug: fmt.Printf("term: position: %s %f / ...\n", ctx.pos(), f)
 			f /= ctx.exponential()
+			// debug: fmt.Printf("term: position: %s -> %f\n", ctx.pos(), f)
 		default:
 			return f
 		}
@@ -350,9 +390,13 @@ func (ctx *FparCtx) expression() float64 {
 	for {
 		switch ctx.ch {
 		case "+":
+			// debug: fmt.Printf("expression: position: %s %f + ...\n", ctx.pos(), t)
 			t += ctx.term()
+			// debug: fmt.Printf("expression: position: %s -> %f\n", ctx.pos(), t)
 		case "-":
+			// debug: fmt.Printf("expression: position: %s %f - ...\n", ctx.pos(), t)
 			t -= ctx.term()
+			// debug: fmt.Printf("expression: position: %s -> %f\n", ctx.pos(), t)
 		default:
 			return t
 		}
@@ -365,9 +409,11 @@ func (ctx *FparCtx) FparF(args []float64) (float64, error) {
 	ctx.arg = args
 	ctx.position = 0
 	ctx.ch = ""
+	// debug: fmt.Printf("FparF: position: %s f(%v) ...\n", ctx.pos(), args)
 	e := ctx.expression()
 	if ctx.ch != ";" {
 		ctx.er(fmt.Errorf("FparF: garbage in function expression"))
 	}
+	// info: fmt.Printf("FparF: position: %s f(%v) = %f\n", ctx.pos(), args, e)
 	return e, ctx.err
 }
