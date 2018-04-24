@@ -31,7 +31,7 @@ type FparCtx struct {
 
 // Cpy - copies one context to the another, it is partially shallow copy (we copy references to maps not maps)
 func (ctx *FparCtx) Cpy() FparCtx {
-	// debug: fmp.Printf("copying context\n")
+	// debug: fmt.Printf("copying context\n")
 	// We just copy references to maps, not maps, but init is only called from single thread and then map is only read not modified
 	return FparCtx{
 		buffer:   ctx.buffer,

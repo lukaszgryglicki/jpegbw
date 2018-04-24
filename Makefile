@@ -1,6 +1,6 @@
-GO_BIN_FILES=cmd/jpegbw/jpegbw.go
+GO_BIN_FILES=cmd/jpegbw/jpegbw.go cmd/gengo/gengo.go
 GO_LIB_FILES=fpar.go
-GO_BIN_CMDS=jpegbw/cmd/jpegbw
+GO_BIN_CMDS=jpegbw/cmd/jpegbw jpegbw/cmd/gengo
 GO_ENV=CGO_ENABLED=1
 GO_BUILD=go build -ldflags '-s -w'
 #GO_BUILD=go build -ldflags '-s -w' -race
@@ -12,7 +12,7 @@ GO_CONST=goconst
 GO_IMPORTS=goimports -w
 GO_USEDEXPORTS=usedexports
 GO_ERRCHECK=errcheck -asserts -ignore '[FS]?[Pp]rint*'
-BINARIES=jpegbw
+BINARIES=jpegbw gengo
 STRIP=strip
 C_LIBS=libjpegbw.so libbyname.so
 C_ENV=
@@ -22,6 +22,9 @@ C_FLAGS=-Wall -ansi -pedantic -shared -O3 -ffast-math -Wstrict-prototypes -Wmiss
 GCC=gcc
 
 all: ${C_LIBS} check ${BINARIES}
+
+gengo: cmd/gengo/gengo.go
+	${GO_ENV} ${GO_BUILD} -o gengo cmd/gengo/gengo.go
 
 jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
