@@ -37,6 +37,7 @@ libbyname.so: byname.c byname.h
 
 fmt: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_FMT}"
+	./for_each_pgo_file.sh "${GO_FMT}"
 
 lint: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_LINT}"

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -20,6 +21,7 @@ func gengo(args []string) error {
 			ldefa = append(ldefa, len(marker))
 		}
 	}
+	ndefs := len(defa)
 
 	nThreads := 0
 	thrN := runtime.NumCPU()
@@ -50,6 +52,14 @@ func gengo(args []string) error {
 				return
 			}
 			defer func() { _ = fout.Close() }()
+
+			if ndefs == 0 {
+				_, err = io.Copy(fout, fin)
+				if err != nil {
+					c <- err
+					return
+				}
+			}
 
 			scanner := bufio.NewScanner(fin)
 			for scanner.Scan() {

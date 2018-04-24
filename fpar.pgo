@@ -31,7 +31,7 @@ type FparCtx struct {
 
 // Cpy - copies one context to the another, it is partially shallow copy (we copy references to maps not maps)
 func (ctx *FparCtx) Cpy() FparCtx {
-	// debug: fmt.Printf("copying context\n")
+	// debug: fmt.Printf("Copying context\n")
 	// We just copy references to maps, not maps, but init is only called from single thread and then map is only read not modified
 	return FparCtx{
 		buffer:   ctx.buffer,
@@ -50,6 +50,7 @@ func (ctx *FparCtx) Cpy() FparCtx {
 
 // Init - initialize context, allocate internal C structs
 func (ctx *FparCtx) Init(lib string) bool {
+	// debug: fmt.Printf("Init library: %s\n", lib)
 	clib := C.CString(lib)
 	defer C.free(unsafe.Pointer(clib))
 	return C.init(clib) == 1
@@ -84,6 +85,9 @@ func (ctx *FparCtx) zeroVect() []float64 {
 }
 
 func (ctx *FparCtx) er(e error) {
+	// debug: if e != nil {
+	// debug:   fmt.Printf("Setting error: %v, current context error: %v\n", e, ctx.err)
+	// debug: }
 	if e != nil && ctx.err == nil {
 		ctx.err = e
 	}
