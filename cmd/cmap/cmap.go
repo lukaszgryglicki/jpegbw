@@ -628,7 +628,7 @@ func cmap(ofn, f string) error {
 	pps := (all / dtEnd.Sub(dtStart).Seconds()) / 1048576.0
 	fmt.Printf("Processed in: %v, MPPS: %.3f, %d\n", dtEnd.Sub(dtStart), pps, nThreads)
 	fmt.Printf("Real values from minimum to max are: red --> cyan/teal\n")
-	fmt.Printf("Imag values from minimum to max are: blue --> yeallo\n")
+	fmt.Printf("Imag values from minimum to max are: blue --> yellow\n")
 	fmt.Printf("Modulo values from minimum to max are: green --> pink\n")
 	fmt.Printf("Re = 0 red almost white\n")
 	fmt.Printf("Im = 0 blue almost white\n")

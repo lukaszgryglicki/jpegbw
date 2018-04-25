@@ -76,7 +76,7 @@ Program to generate complex functions contour charts:
 Values range: (-5.960527040805936-3.1390910953307114i) - (1.7328679513998633+3.139091095330712i), modulo range: 0.002795 - 6.116321, lines range: -5.960527 - 1.732868
 Processed in: 22.294005s, MPPS: 0.110, 0
 Real values from minimum to max are: red --> cyan/teal
-Imag values from minimum to max are: blue --> yeallo
+Imag values from minimum to max are: blue --> yellow
 Modulo values from minimum to max are: green --> pink
 Re = 0 red almost white
 Im = 0 blue almost white
