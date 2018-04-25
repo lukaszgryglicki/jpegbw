@@ -62,7 +62,19 @@ func images2BW(args []string) error {
 	if fun != "" {
 		lib = os.Getenv("LIB")
 		if lib != "" {
-			ok := fctx.Init(lib)
+			nf := 128
+			nfs := os.Getenv("NF")
+			if nfs != "" {
+				v, err := strconv.Atoi(nfs)
+				if err != nil {
+					return err
+				}
+				if v < 1 || v > 0xffff {
+					return fmt.Errorf("NF must be from 1-65535 range")
+				}
+				nf = v
+			}
+			ok := fctx.Init(lib, uint(nf))
 			if !ok {
 				return fmt.Errorf("LIB init failed for: %s", lib)
 			}
@@ -488,6 +500,7 @@ HI - when calculating intensity range, discard values that are in this higher %,
 GA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)->(x,pow(x, GA)) mapping
 F - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
 LIB - if F is used and F calls external functions, thery need to be loaded for this C library
+NF - set maximum number of distinct functions in the parser, if not set, default 128 is used
 N - set number of CPUs to process data
 O - eventual overwite file name config, example: ".jpg:.png"
 `

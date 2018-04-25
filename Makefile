@@ -41,12 +41,14 @@ fmt: ${GO_BIN_FILES} ${GO_LIB_FILES}
 
 lint: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_LINT}"
+	./for_each_pgo_file.sh "${GO_LINT}"
 
 vet: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_VET}"
 
 imports: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_IMPORTS}"
+	./for_each_pgo_file.sh "${GO_IMPORTS}"
 
 const: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	${GO_CONST} ./...

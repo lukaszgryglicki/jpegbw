@@ -56,3 +56,8 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 
 - First build and then `sudo make install`.
 - Package: `go get github.com/lukaszgryglicki/jpegbw`.
+
+# development
+- Edit `*.pgo` files instead of `*.go` files.
+- Once done run `./gen.sh`.
+- `*.go` files are generated from `*.pgo` files.

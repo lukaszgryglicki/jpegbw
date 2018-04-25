@@ -49,11 +49,11 @@ func (ctx *FparCtx) Cpy() FparCtx {
 }
 
 // Init - initialize context, allocate internal C structs
-func (ctx *FparCtx) Init(lib string) bool {
-	// debug: fmt.Printf("init library: %s\n", lib)
+func (ctx *FparCtx) Init(lib string, n uint) bool {
+	// debug: fmt.Printf("init library: %s,%d\n", lib, n)
 	clib := C.CString(lib)
 	defer C.free(unsafe.Pointer(clib))
-	return C.init(clib) == 1
+	return C.init(clib, C.size_t(n)) == 1
 }
 
 // Tidy - free memory, release context, deallocate insternal C structs

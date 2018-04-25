@@ -1,6 +1,7 @@
 #include "byname.h"
 
 static void* handle = 0;
+static size_t maxfn = 0;
 static double (**fptra)(double) = 0;
 static double (**fptra2)(double, double) = 0;
 static double (**fptra3)(double, double, double) = 0;
@@ -28,7 +29,7 @@ double byname(char* fname, double arg, int* res) {
     }
   }
   if (!fptr) {
-    if (nptrs >= MAXFN) {
+    if (nptrs >= maxfn) {
       printf("byname %s,%f: function table full\n", fname, arg);
       *res = 2;
       return 0.0;
@@ -62,7 +63,7 @@ double byname2(char* fname, double arg1, double arg2, int* res) {
     }
   }
   if (!fptr) {
-    if (nptrs2 >= MAXFN) {
+    if (nptrs2 >= maxfn) {
       printf("byname2 %s,%f,%f: function table full\n", fname, arg1, arg2);
       *res = 2;
       return 0.0;
@@ -96,7 +97,7 @@ double byname3(char* fname, double arg1, double arg2, double arg3, int* res) {
     }
   }
   if (!fptr) {
-    if (nptrs3 >= MAXFN) {
+    if (nptrs3 >= maxfn) {
       printf("byname3 %s,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3);
       *res = 2;
       return 0.0;
@@ -130,7 +131,7 @@ double byname4(char* fname, double arg1, double arg2, double arg3, double arg4, 
     }
   }
   if (!fptr) {
-    if (nptrs4 >= MAXFN) {
+    if (nptrs4 >= maxfn) {
       printf("byname4 %s,%f,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3, arg4);
       *res = 2;
       return 0.0;
@@ -150,20 +151,25 @@ double byname4(char* fname, double arg1, double arg2, double arg3, double arg4, 
   return (*fptr)(arg1, arg2, arg3, arg4);
 }
 
-int init(char* lib) {
-  handle = dlopen(lib, RTLD_LAZY);
-  if (!handle) {
-    printf("%s load result: %p\n", lib, handle);
+int init(char* lib, size_t mfn) {
+  if (mfn < 1) {
+    printf("init(%s, %ld): mfn must be >= 1\n", lib, mfn);
     return 0;
   }
-  fptra = malloc(MAXFN*sizeof(void*));
-  fptra2 = malloc(MAXFN*sizeof(void*));
-  fptra3 = malloc(MAXFN*sizeof(void*));
-  fptra4 = malloc(MAXFN*sizeof(void*));
-  fnames = (char**)malloc(MAXFN*sizeof(char*));
-  fnames2 = (char**)malloc(MAXFN*sizeof(char*));
-  fnames3 = (char**)malloc(MAXFN*sizeof(char*));
-  fnames4 = (char**)malloc(MAXFN*sizeof(char*));
+  maxfn = mfn;
+  handle = dlopen(lib, RTLD_LAZY);
+  if (!handle) {
+    printf("init(%s, %ld): cannot load library\n", lib, mfn);
+    return 0;
+  }
+  fptra = malloc(maxfn*sizeof(void*));
+  fptra2 = malloc(maxfn*sizeof(void*));
+  fptra3 = malloc(maxfn*sizeof(void*));
+  fptra4 = malloc(maxfn*sizeof(void*));
+  fnames = (char**)malloc(maxfn*sizeof(char*));
+  fnames2 = (char**)malloc(maxfn*sizeof(char*));
+  fnames3 = (char**)malloc(maxfn*sizeof(char*));
+  fnames4 = (char**)malloc(maxfn*sizeof(char*));
   if (!fptra || !fnames || !fptra2 || !fnames2 || !fptra3 || !fnames3 || !fptra4 || !fnames4) {
     printf("%s malloc failed\n", lib);
     return 0;
