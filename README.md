@@ -64,3 +64,23 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 - Edit `*.pgo` files instead of `*.go` files.
 - Once done run `./gen.sh`.
 - `*.go` files are generated from `*.pgo` files.
+
+# cmap
+
+Program to generate complex functions contour charts:
+
+- Run `cmap` to see help.
+- Example: `LIB="libjpegbw.so" X=1600 Y=1600 K=2 R0=-1 R1=4 I0=-4 I1=4 ./cmap complex_log.png "clog(x1)"`
+```
+(1600 x 1600) Real: [-1.000000,4.000000] Imag: [-4.000000,4.000000] Threads: 8
+Values range: (-5.960527040805936-3.1390910953307114i) - (1.7328679513998633+3.139091095330712i), modulo range: 0.002795 - 6.116321, lines range: -5.960527 - 1.732868
+Processed in: 22.294005s, MPPS: 0.110, 0
+Real values from minimum to max are: red --> cyan/teal
+Imag values from minimum to max are: blue --> yeallo
+Modulo values from minimum to max are: green --> pink
+Re = 0 red almost white
+Im = 0 blue almost white
+Mod = 0 green almost white
+Complex plane Re = 0, Im = 0 and modulo unit circle: white
+Time: 22.294628s
+```
