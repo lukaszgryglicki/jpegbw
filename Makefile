@@ -1,9 +1,9 @@
-GO_BIN_FILES=cmd/jpegbw/jpegbw.go cmd/gengo/gengo.go
+GO_BIN_FILES=cmd/jpegbw/jpegbw.go cmd/gengo/gengo.go cmd/cmap/cmap.go
 GO_LIB_FILES=fpar.go
-GO_BIN_CMDS=jpegbw/cmd/jpegbw jpegbw/cmd/gengo
+GO_BIN_CMDS=jpegbw/cmd/jpegbw jpegbw/cmd/gengo jpegbw/cmap/cmap
 GO_ENV=CGO_ENABLED=1
-GO_BUILD=go build -ldflags '-s -w'
-#GO_BUILD=go build -ldflags '-s -w' -race
+#GO_BUILD=go build -ldflags '-s -w'
+GO_BUILD=go build -ldflags '-s -w' -race
 GO_INSTALL=go install -ldflags '-s'
 GO_FMT=gofmt -s -w
 GO_LINT=golint -set_exit_status
@@ -12,7 +12,7 @@ GO_CONST=goconst
 GO_IMPORTS=goimports -w
 GO_USEDEXPORTS=usedexports
 GO_ERRCHECK=errcheck -asserts -ignore '[FS]?[Pp]rint*'
-BINARIES=jpegbw gengo
+BINARIES=jpegbw gengo cmap
 STRIP=strip
 C_LIBS=libjpegbw.so libbyname.so
 C_ENV=
@@ -25,6 +25,9 @@ all: ${C_LIBS} check ${BINARIES}
 
 gengo: cmd/gengo/gengo.go
 	${GO_ENV} ${GO_BUILD} -o gengo cmd/gengo/gengo.go
+
+cmap: cmd/cmap/cmap.go ${C_LIBS} ${GO_LIB_FILES}
+	${GO_ENV} ${GO_BUILD} -o cmap cmd/cmap/cmap.go
 
 jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
