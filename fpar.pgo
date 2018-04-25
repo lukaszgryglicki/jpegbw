@@ -8,7 +8,7 @@ import "C"
 
 import (
 	"fmt"
-	"math"
+	"math/cmplx"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -22,7 +22,7 @@ type FparCtx struct {
 	ch       string
 	maxpos   int
 	err      error
-	arg      []float64
+	arg      []complex128
 	nvar     int
 	digits   map[string]struct{}
 	alphas   map[string]struct{}
@@ -40,7 +40,7 @@ func (ctx *FparCtx) Cpy() FparCtx {
 		ch:       ctx.ch,
 		maxpos:   ctx.maxpos,
 		err:      nil,
-		arg:      []float64{},
+		arg:      []complex128{},
 		nvar:     ctx.nvar,
 		digits:   ctx.digits,
 		alphas:   ctx.alphas,
@@ -76,8 +76,8 @@ func (ctx *FparCtx) makeCIdents() {
 	ctx.cidents = make(map[string]*C.char)
 }
 
-func (ctx *FparCtx) zeroVect() []float64 {
-	vec := []float64{}
+func (ctx *FparCtx) zeroVect() []complex128 {
+	vec := []complex128{}
 	for i := 0; i < ctx.nvar; i++ {
 		vec = append(vec, 0.0)
 	}
@@ -99,6 +99,7 @@ func (ctx *FparCtx) makeDigits() {
 		ctx.digits[fmt.Sprintf("%d", i)] = struct{}{}
 	}
 	ctx.digits["."] = struct{}{}
+	ctx.digits["_"] = struct{}{}
 }
 
 func (ctx *FparCtx) makeAlphas() {
@@ -179,13 +180,43 @@ func (ctx *FparCtx) readNextChar() {
 	}
 }
 
-func (ctx *FparCtx) readNumber() float64 {
+func (ctx *FparCtx) parseComplex(arg string) (complex128, error) {
+	idx := strings.Index(arg, "_")
+	if idx < 0 {
+		f, err := strconv.ParseFloat(arg, 64)
+		if err != nil {
+			return complex(0.0, 0.0), err
+		}
+		return complex(f, 0.0), nil
+	}
+	re := 0.0
+	if idx > 0 {
+		f, err := strconv.ParseFloat(arg[:idx], 64)
+		if err != nil {
+			return complex(0.0, 0.0), err
+		}
+		re = f
+	}
+	l := len(arg)
+	im := 0.0
+	if idx < l-1 {
+		f, err := strconv.ParseFloat(arg[idx+1:], 64)
+		if err != nil {
+			return complex(0.0, 0.0), err
+		}
+		im = f
+	}
+	// debug: fmt.Printf("parseComplex: position: %s -> (%s,%d,%d,%f,%f,%v)\n", ctx.pos(), arg, idx, l, re, im, complex(re, im))
+	return complex(re, im), nil
+}
+
+func (ctx *FparCtx) readNumber() complex128 {
 	digitStr := ""
 	for ctx.isDigit() {
 		digitStr += ctx.ch
 		ctx.readNextChar()
 	}
-	f, err := strconv.ParseFloat(digitStr, 64)
+	f, err := ctx.parseComplex(digitStr)
 	// debug: fmt.Printf("readNumber: position: %s -> (%s,%f,%v)\n", ctx.pos(), digitStr, f, err)
 	ctx.er(err)
 	return f
@@ -207,7 +238,7 @@ func (ctx *FparCtx) readIdent() string {
 	return ident
 }
 
-func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
+func (ctx *FparCtx) callFunction(ident string) (complex128, bool) {
 	// debug: fmt.Printf("callFunction: position: %s %s(...)\n", ctx.pos(), ident)
 	ctx.skipBlanks()
 	res := 10
@@ -223,9 +254,9 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 		}
 		res1 := ctx.expression()
 		ctx.skipBlanks()
-		v := 0.0
+		v := complex(0.0, 0.0)
 		if ctx.ch == ")" {
-			v = float64(C.byname(cident, C.double(res1), (*C.int)(unsafe.Pointer(&res))))
+			v = complex128(C.byname(cident, C.complexdouble(res1), (*C.int)(unsafe.Pointer(&res))))
 			// info: fmt.Printf("callFunction: position: %s %s(%f) -> (%f,%d)\n", ctx.pos(), ident, res1, v, res)
 			ctx.readNextChar()
 			ctx.skipBlanks()
@@ -238,7 +269,7 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 			res2 := ctx.expression()
 			ctx.skipBlanks()
 			if ctx.ch == ")" {
-				v = float64(C.byname2(cident, C.double(res1), C.double(res2), (*C.int)(unsafe.Pointer(&res))))
+				v = complex128(C.byname2(cident, C.complexdouble(res1), C.complexdouble(res2), (*C.int)(unsafe.Pointer(&res))))
 				// info: fmt.Printf("callFunction: position: %s %s(%f,%f) -> (%f,%d)\n", ctx.pos(), ident, res1, res2, v, res)
 				ctx.readNextChar()
 				ctx.skipBlanks()
@@ -251,7 +282,7 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 				res3 := ctx.expression()
 				ctx.skipBlanks()
 				if ctx.ch == ")" {
-					v = float64(C.byname3(cident, C.double(res1), C.double(res2), C.double(res3), (*C.int)(unsafe.Pointer(&res))))
+					v = complex128(C.byname3(cident, C.complexdouble(res1), C.complexdouble(res2), C.complexdouble(res3), (*C.int)(unsafe.Pointer(&res))))
 					// info: fmt.Printf("callFunction: position: %s %s(%f,%f,%f) -> (%f,%d)\n", ctx.pos(), ident, res1, res2, res3, v, res)
 					ctx.readNextChar()
 					ctx.skipBlanks()
@@ -264,7 +295,7 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 					res4 := ctx.expression()
 					ctx.skipBlanks()
 					if ctx.ch == ")" {
-						v = float64(C.byname4(cident, C.double(res1), C.double(res2), C.double(res3), C.double(res4), (*C.int)(unsafe.Pointer(&res))))
+						v = complex128(C.byname4(cident, C.complexdouble(res1), C.complexdouble(res2), C.complexdouble(res3), C.complexdouble(res4), (*C.int)(unsafe.Pointer(&res))))
 						// info: fmt.Printf("callFunction: position: %s %s(%f,%f,%f,%f) -> (%f,%d)\n", ctx.pos(), ident, res1, res2, res3, res4, v, res)
 						ctx.readNextChar()
 						ctx.skipBlanks()
@@ -294,7 +325,7 @@ func (ctx *FparCtx) callFunction(ident string) (float64, bool) {
 	return 0.0, false
 }
 
-func (ctx *FparCtx) argVal(ident string) (float64, bool) {
+func (ctx *FparCtx) argVal(ident string) (complex128, bool) {
 	if ident == "" {
 		// debug: fmt.Printf("argVal: position: %s '' -> 0,false\n", ctx.pos())
 		return 0.0, false
@@ -312,9 +343,9 @@ func (ctx *FparCtx) argVal(ident string) (float64, bool) {
 	return 0.0, false
 }
 
-func (ctx *FparCtx) factor() float64 {
-	f := 0.0
-	minus := 1.0
+func (ctx *FparCtx) factor() complex128 {
+	f := complex(0.0, 0.0)
+	minus := complex(1.0, 0.0)
 	ctx.readNextChar()
 	ctx.skipBlanks()
 	for ctx.ch == "+" || ctx.ch == "-" {
@@ -357,17 +388,17 @@ func (ctx *FparCtx) factor() float64 {
 	return f * minus
 }
 
-func (ctx *FparCtx) exponential() float64 {
+func (ctx *FparCtx) exponential() complex128 {
 	f := ctx.factor()
 	for ctx.ch == "^" {
 		// debug: fmt.Printf("exponential: position: %s %f ^ ...\n", ctx.pos(), f)
-		f = math.Pow(f, ctx.exponential())
+		f = cmplx.Pow(f, ctx.exponential())
 		// debug: fmt.Printf("exponential: position: %s -> %f\n", ctx.pos(), f)
 	}
 	return f
 }
 
-func (ctx *FparCtx) term() float64 {
+func (ctx *FparCtx) term() complex128 {
 	f := ctx.exponential()
 	for {
 		switch ctx.ch {
@@ -385,7 +416,7 @@ func (ctx *FparCtx) term() float64 {
 	}
 }
 
-func (ctx *FparCtx) expression() float64 {
+func (ctx *FparCtx) expression() complex128 {
 	t := ctx.term()
 	for {
 		switch ctx.ch {
@@ -404,7 +435,7 @@ func (ctx *FparCtx) expression() float64 {
 }
 
 // FparF - call user defined function
-func (ctx *FparCtx) FparF(args []float64) (float64, error) {
+func (ctx *FparCtx) FparF(args []complex128) (complex128, error) {
 	ctx.err = nil
 	ctx.arg = args
 	ctx.position = 0

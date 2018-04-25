@@ -2,10 +2,10 @@
 
 static void* handle = 0;
 static size_t maxfn = 0;
-static double (**fptra)(double) = 0;
-static double (**fptra2)(double, double) = 0;
-static double (**fptra3)(double, double, double) = 0;
-static double (**fptra4)(double, double, double, double) = 0;
+static double complex (**fptra)(double complex) = 0;
+static double complex (**fptra2)(double complex, double complex) = 0;
+static double complex (**fptra3)(double complex, double complex, double complex) = 0;
+static double complex (**fptra4)(double complex, double complex, double complex, double complex) = 0;
 static char** fnames = 0;
 static char** fnames2 = 0;
 static char** fnames3 = 0;
@@ -15,11 +15,11 @@ static int nptrs2 = 0;
 static int nptrs3 = 0;
 static int nptrs4 = 0;
 
-double byname(char* fname, double arg, int* res) {
+double complex byname(char* fname, double complex arg, int* res) {
   int i;
-  double (*fptr)(double) = 0;
+  double complex (*fptr)(double complex) = 0;
   if (!handle) {
-    printf("byname %s,%f: library not open\n", fname, arg);
+    printf("byname %s,%f+%fi library not open\n", fname, creal(arg), cimag(arg));
     *res = 1;
     return 0.0;
   }
@@ -30,13 +30,13 @@ double byname(char* fname, double arg, int* res) {
   }
   if (!fptr) {
     if (nptrs >= maxfn) {
-      printf("byname %s,%f: function table full\n", fname, arg);
+      printf("byname %s,%f+%fi function table full\n", fname, creal(arg), cimag(arg));
       *res = 2;
       return 0.0;
     }
-    fptr = (double (*)(double))dlsym(handle, fname);
+    fptr = (double complex (*)(double complex))dlsym(handle, fname);
     if (!fptr) {
-      printf("byname %s,%f: function not found\n", fname, arg);
+      printf("byname %s,%f+%fi function not found\n", fname, creal(arg), cimag(arg));
       *res = 3;
       return 0.0;
     }
@@ -49,11 +49,11 @@ double byname(char* fname, double arg, int* res) {
   return (*fptr)(arg);
 }
 
-double byname2(char* fname, double arg1, double arg2, int* res) {
+double complex byname2(char* fname, double complex arg1, double complex arg2, int* res) {
   int i;
-  double (*fptr)(double, double) = 0;
+  double complex (*fptr)(double complex, double complex) = 0;
   if (!handle) {
-    printf("byname2 %s,%f,%f: library not open\n", fname, arg1, arg2);
+    printf("byname2 %s,%f+%fi,%f+%fi: library not open\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2));
     *res = 1;
     return 0.0;
   }
@@ -64,13 +64,13 @@ double byname2(char* fname, double arg1, double arg2, int* res) {
   }
   if (!fptr) {
     if (nptrs2 >= maxfn) {
-      printf("byname2 %s,%f,%f: function table full\n", fname, arg1, arg2);
+      printf("byname2 %s,%f+%fi,%f+%fi: function table full\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2));
       *res = 2;
       return 0.0;
     }
-    fptr = (double (*)(double, double))dlsym(handle, fname);
+    fptr = (double complex (*)(double complex, double complex))dlsym(handle, fname);
     if (!fptr) {
-      printf("byname2 %s,%f,%f: function not found\n", fname, arg1, arg2);
+      printf("byname2 %s,%f+%fi,%f+%fi: function not found\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2));
       *res = 3;
       return 0.0;
     }
@@ -83,11 +83,11 @@ double byname2(char* fname, double arg1, double arg2, int* res) {
   return (*fptr)(arg1, arg2);
 }
 
-double byname3(char* fname, double arg1, double arg2, double arg3, int* res) {
+double complex byname3(char* fname, double complex arg1, double complex arg2, double complex arg3, int* res) {
   int i;
-  double (*fptr)(double, double, double) = 0;
+  double complex (*fptr)(double complex, double complex, double complex) = 0;
   if (!handle) {
-    printf("byname3 %s,%f,%f,%f: library not open\n", fname, arg1, arg2, arg3);
+    printf("byname3 %s,%f+%fi,%f+%fi,%f+%fi: library not open\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2), creal(arg3), cimag(arg3));
     *res = 1;
     return 0.0;
   }
@@ -98,13 +98,13 @@ double byname3(char* fname, double arg1, double arg2, double arg3, int* res) {
   }
   if (!fptr) {
     if (nptrs3 >= maxfn) {
-      printf("byname3 %s,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3);
+      printf("byname3 %s,%f+%fi,%f+%fi,%f+%fi: function table full\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2), creal(arg3), cimag(arg3));
       *res = 2;
       return 0.0;
     }
-    fptr = (double (*)(double, double, double))dlsym(handle, fname);
+    fptr = (double complex (*)(double complex, double complex, double complex))dlsym(handle, fname);
     if (!fptr) {
-      printf("byname3 %s,%f,%f,%f: function not found\n", fname, arg1, arg2, arg3);
+      printf("byname3 %s,%f+%fi,%f+%fi,%f+%fi: function not found\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2), creal(arg3), cimag(arg3));
       *res = 3;
       return 0.0;
     }
@@ -117,11 +117,11 @@ double byname3(char* fname, double arg1, double arg2, double arg3, int* res) {
   return (*fptr)(arg1, arg2, arg3);
 }
 
-double byname4(char* fname, double arg1, double arg2, double arg3, double arg4, int* res) {
+double complex byname4(char* fname, double complex arg1, double complex arg2, double complex arg3, double complex arg4, int* res) {
   int i;
-  double (*fptr)(double, double, double, double) = 0;
+  double complex (*fptr)(double complex, double complex, double complex, double complex) = 0;
   if (!handle) {
-    printf("byname4 %s,%f,%f,%f,%f: library not open\n", fname, arg1, arg2, arg3, arg4);
+    printf("byname4 %s,%f+%fi,%f+%fi,%f+%fi,%f+%fi: library not open\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2), creal(arg3), cimag(arg3), creal(arg4), cimag(arg4));
     *res = 1;
     return 0.0;
   }
@@ -132,13 +132,13 @@ double byname4(char* fname, double arg1, double arg2, double arg3, double arg4, 
   }
   if (!fptr) {
     if (nptrs4 >= maxfn) {
-      printf("byname4 %s,%f,%f,%f,%f: function table full\n", fname, arg1, arg2, arg3, arg4);
+      printf("byname4 %s,%f+%fi,%f+%fi,%f+%fi,%f+%fi: function table full\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2), creal(arg3), cimag(arg3), creal(arg4), cimag(arg4));
       *res = 2;
       return 0.0;
     }
-    fptr = (double (*)(double, double, double, double))dlsym(handle, fname);
+    fptr = (double complex (*)(double complex, double complex, double complex, double complex))dlsym(handle, fname);
     if (!fptr) {
-      printf("byname4 %s,%f,%f,%f,%f: function not found\n", fname, arg1, arg2, arg3, arg4);
+      printf("byname4 %s,%f+%fi,%f+%fi,%f+%fi,%f+%fi: function not found\n", fname, creal(arg1), cimag(arg1), creal(arg2), cimag(arg2), creal(arg3), cimag(arg3), creal(arg4), cimag(arg4));
       *res = 3;
       return 0.0;
     }

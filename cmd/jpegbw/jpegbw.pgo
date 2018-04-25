@@ -84,12 +84,14 @@ func images2BW(args []string) error {
 		if err != nil {
 			return err
 		}
-		err = fctx.FparOK(4)
+		err = fctx.FparOK(5)
 		if err != nil {
 			return err
 		}
 		bFun = true
 	}
+  // I (use imaginary part of function result instead of real)
+  useImag := os.Getenv("I") != ""
 
 	// ENV
 	// Quality
@@ -348,9 +350,10 @@ func images2BW(args []string) error {
 					return
 				}
 				fi := float64(i) / float64(x)
+        trace := 0.0
 				for j := 0; j < y; j++ {
 					fj := float64(j) / float64(y)
-					pr, pg, pb, _ := m.At(i, j).RGBA()
+					pr, pg, pb, pa := m.At(i, j).RGBA()
 					gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
 					iv := int(gs) - int(loI)
 					if iv < 0 {
@@ -371,7 +374,15 @@ func images2BW(args []string) error {
 					}
 					if bFun {
 						var e error
-						fv, e = ctxa[cNum].FparF([]float64{fv / 65535.0, fi, fj, fk})
+            cv, e := ctxa[cNum].FparF(
+              []complex128{
+                complex(fv / 65535.0, 0.0),
+                complex(fi, fj),
+                complex(float64(pr) / 65535.0, float64(pg) / 65535.0),
+                complex(float64(pb) / 65535.0, float64(pa) / 65535.0),
+                complex(fk, trace),
+              },
+            )
 						if e != nil {
 							// Sync
 							cmtx.Lock()
@@ -380,6 +391,12 @@ func images2BW(args []string) error {
 							c <- e
 							return
 						}
+            if useImag {
+              fv = imag(cv)
+            } else {
+              fv = real(cv)
+            }
+            trace = fv
 						fv *= 65535.0
 						if fv < 0.0 {
 							fv = 0.0
@@ -501,6 +518,7 @@ GA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)
 F - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
 LIB - if F is used and F calls external functions, thery need to be loaded for this C library
 NF - set maximum number of distinct functions in the parser, if not set, default 128 is used
+I - use imaginary part of fuction return value instead of real, use like I=1
 N - set number of CPUs to process data
 O - eventual overwite file name config, example: ".jpg:.png"
 `
