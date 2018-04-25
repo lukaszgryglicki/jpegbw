@@ -90,8 +90,8 @@ func images2BW(args []string) error {
 		}
 		bFun = true
 	}
-  // I (use imaginary part of function result instead of real)
-  useImag := os.Getenv("I") != ""
+	// I (use imaginary part of function result instead of real)
+	useImag := os.Getenv("I") != ""
 
 	// ENV
 	// Quality
@@ -350,7 +350,7 @@ func images2BW(args []string) error {
 					return
 				}
 				fi := float64(i) / float64(x)
-        trace := 0.0
+				trace := 1.0
 				for j := 0; j < y; j++ {
 					fj := float64(j) / float64(y)
 					pr, pg, pb, pa := m.At(i, j).RGBA()
@@ -374,15 +374,15 @@ func images2BW(args []string) error {
 					}
 					if bFun {
 						var e error
-            cv, e := ctxa[cNum].FparF(
-              []complex128{
-                complex(fv / 65535.0, 0.0),
-                complex(fi, fj),
-                complex(float64(pr) / 65535.0, float64(pg) / 65535.0),
-                complex(float64(pb) / 65535.0, float64(pa) / 65535.0),
-                complex(fk, trace),
-              },
-            )
+						cv, e := ctxa[cNum].FparF(
+							[]complex128{
+								complex(fv/65535.0, 0.0),
+								complex(fi, fj),
+								complex(float64(pr)/65535.0, float64(pg)/65535.0),
+								complex(float64(pb)/65535.0, float64(pa)/65535.0),
+								complex(fk, trace),
+							},
+						)
 						if e != nil {
 							// Sync
 							cmtx.Lock()
@@ -391,12 +391,13 @@ func images2BW(args []string) error {
 							c <- e
 							return
 						}
-            if useImag {
-              fv = imag(cv)
-            } else {
-              fv = real(cv)
-            }
-            trace = fv
+						if useImag {
+							fv = imag(cv)
+						} else {
+							fv = real(cv)
+						}
+						trace = fv
+						// trace: fmt.Printf("trace is: %v\n", trace)
 						fv *= 65535.0
 						if fv < 0.0 {
 							fv = 0.0

@@ -16,9 +16,9 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 - You can group expreccions using `( )`, for example `F="(x1+x2)*x3"`.
 - Functions can take 1, 2, 3 or 4 arguments.
 - `x1` will be replaced with greyscale value of current pixel, range is 0-1.
-- `x2` will be replaced with current pixel's `x`  and `y` position `x+yi` , range is 0-1.
+- `x2` will be replaced with current pixel's `x` and `y` position `x+yi` , range is 0-1.
 - `x3` will be replaced with current pixel's red and green colors `r+gi`, range is 0-1.
-- `x4` will be replaced with current pixel's ble and alpha colors `b+ai`, range is 0-1.
+- `x4` will be replaced with current pixel's blue and alpha colors `b+ai`, range is 0-1.
 - `x5` will be replaced with number indicating processing file number (scaled), and previous pixel's value `pn+prev*i` range is 0-1.
 - You can also call functions from external C libraries.
 

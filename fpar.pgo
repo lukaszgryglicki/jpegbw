@@ -182,6 +182,7 @@ func (ctx *FparCtx) readNextChar() {
 
 func (ctx *FparCtx) parseComplex(arg string) (complex128, error) {
 	idx := strings.Index(arg, "_")
+	// debug: fmt.Printf("parseComplex: position: %s -> %s,%d\n", ctx.pos(), arg, idx)
 	if idx < 0 {
 		f, err := strconv.ParseFloat(arg, 64)
 		if err != nil {
