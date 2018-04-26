@@ -14,11 +14,12 @@ GO_USEDEXPORTS=usedexports
 GO_ERRCHECK=errcheck -asserts -ignore '[FS]?[Pp]rint*'
 BINARIES=jpegbw gengo cmap
 STRIP=strip
-C_LIBS=libjpegbw.so libbyname.so
+C_LIBS=libjpegbw.so libbyname.so libtet.so
 C_ENV=
 C_LINK=-lm -ldl
-C_FILES=jpegbw.h jpegbw.c byname.h byname.c
+C_FILES=jpegbw.h jpegbw.c byname.h byname.c tet.h tet.cpp
 C_FLAGS=-Wall -ansi -pedantic -shared -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion
+C_TEST=-Wall -ansi -pedantic -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion
 GCC=gcc
 
 all: ${C_LIBS} check ${BINARIES}
@@ -37,6 +38,9 @@ libjpegbw.so: jpegbw.c jpegbw.h
 
 libbyname.so: byname.c byname.h
 	${C_ENV} ${GCC} ${C_FLAGS} -o libbyname.so byname.c ${C_LINK}
+
+libtet.so: tet.c tet.h
+	${C_ENV} ${GCC} ${C_FLAGS} -o libtet.so tet.c ${C_LINK}
 
 fmt: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_FMT}"

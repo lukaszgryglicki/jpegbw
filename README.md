@@ -85,3 +85,15 @@ Mod = 0 green almost white
 Complex plane Re = 0, Im = 0 and modulo unit circle: white
 Time: 22.294628s
 ```
+
+# tetration
+
+- There is a tetration library `libtet.so`.
+- You can test it via: `clear; LIB="./libtet.so" ./cmap out.jpg 'tettest(1,_1,0.5,_1)'`
+- You can use functions from the tetration library (see `tet.c`, `tet.h`):
+  - `tet(z)` complex natural tetration of z (base e).
+  - `ate(z)` complex natural abel-tetration (aka super logarithm) of z (base e).
+  - `hexp(z, h)` - partial iterate of exp(z) function. For example h=1 --> exp(x), 2=2 --> exp(exp(x)), h=0 -> x, but h=0.5 half iterate exponential.
+  - h in `hexp(z, h)` is complex, so you can make i-iterate of exp(z) via: `hexp(z, _1)`.
+- `tettest` function calls C `exit` internally, it is supposed to be called once with 4 args to call various combinations of all functions mentioned above.
+- All those functions can be used to generate contour charts of tetration, super log, half iterate exp etc.
