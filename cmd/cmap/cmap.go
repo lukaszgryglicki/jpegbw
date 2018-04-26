@@ -702,20 +702,20 @@ func cmap(ofn, f string) error {
 				if item.fz {
 					switch item.rim {
 					case "r":
-						calculateHitsR(px, data, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+						calculateHitsR(px, data, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
 					case "i":
-						calculateHitsI(px, data, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+						calculateHitsI(px, data, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
 					case "m":
-						calculateHitsM(px, data, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+						calculateHitsM(px, data, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
 					}
 				} else {
 					switch item.rim {
 					case "r":
-						calculateHitsR(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+						calculateHitsR(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
 					case "i":
-						calculateHitsI(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+						calculateHitsI(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
 					case "m":
-						calculateHitsM(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+						calculateHitsM(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
 					}
 				}
 			}
