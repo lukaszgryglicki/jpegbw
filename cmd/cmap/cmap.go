@@ -59,7 +59,7 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 	if s == "" {
 		return false, nil
 	}
-	ary := strings.Split(s, ";")
+	ary := strings.Split(strings.TrimSpace(s), ";")
 	if len(ary) < 2 {
 		return false, fmt.Errorf("required at least two elements separated by ';': %s", s)
 	}
@@ -69,10 +69,15 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 	}
 	dc.n = n
 	for idx, item := range ary[1:] {
+		item := strings.TrimSpace(item)
 		//fz,r,3.14,255:128:192:255,0.01,0.01:-0.01:0:0
-		itemAry := strings.Split(item, ",")
-		if len(itemAry) != 6 {
-			return false, fmt.Errorf("single item must have 6 ',' values: fz,r,v,col,vinc,cinc: '%s', got %d for %d item", item, len(itemAry), idx+1)
+		ary := strings.Split(item, ",")
+		if len(ary) != 6 {
+			return false, fmt.Errorf("single item must have 6 ',' values: fz,r,v,col,vinc,cinc: '%s', got %d for %d item", item, len(ary), idx+1)
+		}
+		itemAry := []string{}
+		for _, el := range ary {
+			itemAry = append(itemAry, strings.TrimSpace(el))
 		}
 		var dci drawConfigItem
 		if itemAry[0] == "fz" {
@@ -96,19 +101,19 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 		if len(colA) != 4 {
 			return false, fmt.Errorf("item %d: '%s' col value incorrect: '%s' must be 4 0-255 uint8 values ':' separated", idx+1, item, itemAry[3])
 		}
-		r, err := strconv.Atoi(colA[0])
+		r, err := strconv.Atoi(strings.TrimSpace(colA[0]))
 		if err != nil {
 			return false, err
 		}
-		g, err := strconv.Atoi(colA[1])
+		g, err := strconv.Atoi(strings.TrimSpace(colA[1]))
 		if err != nil {
 			return false, err
 		}
-		b, err := strconv.Atoi(colA[2])
+		b, err := strconv.Atoi(strings.TrimSpace(colA[2]))
 		if err != nil {
 			return false, err
 		}
-		a, err := strconv.Atoi(colA[3])
+		a, err := strconv.Atoi(strings.TrimSpace(colA[3]))
 		if err != nil {
 			return false, err
 		}
@@ -125,24 +130,21 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 		if len(colA) != 4 {
 			return false, fmt.Errorf("item %d: '%s' colInc value incorrect: '%s' must be 4 float values ':' separated", idx+1, item, itemAry[5])
 		}
-		ri, err := strconv.ParseFloat(colA[0], 64)
+		ri, err := strconv.ParseFloat(strings.TrimSpace(colA[0]), 64)
 		if err != nil {
 			return false, err
 		}
-		gi, err := strconv.ParseFloat(colA[1], 64)
+		gi, err := strconv.ParseFloat(strings.TrimSpace(colA[1]), 64)
 		if err != nil {
 			return false, err
 		}
-		bi, err := strconv.ParseFloat(colA[2], 64)
+		bi, err := strconv.ParseFloat(strings.TrimSpace(colA[2]), 64)
 		if err != nil {
 			return false, err
 		}
-		ai, err := strconv.ParseFloat(colA[3], 64)
+		ai, err := strconv.ParseFloat(strings.TrimSpace(colA[3]), 64)
 		if err != nil {
 			return false, err
-		}
-		if ri > 1.0 || bi > 1.0 || gi > 1.0 || ai > 1.0 || ri < -1.0 || bi < -1.0 || gi < -1.0 || ai < -1.0 {
-			return false, fmt.Errorf("item %d: '%s' colInc value incorrect: '%s' all ri,gi,bi,gi values must be from -1.0-1.0 range", idx+1, item, itemAry[5])
 		}
 		dci.cinc = []float64{ri, gi, bi, ai}
 		dc.items = append(dc.items, dci)
@@ -230,7 +232,7 @@ func calculateHitsR(px pixRect, data complexRect, x, y int, val float64, col col
 			pv := real(data[i][j-1])
 			v := real(data[i][j])
 			if (pv <= val && v > val) || (pv >= val && v < val) {
-        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
 				px[i][j].hits = append(px[i][j].hits, col)
 			}
 		}
@@ -240,7 +242,7 @@ func calculateHitsR(px pixRect, data complexRect, x, y int, val float64, col col
 			pv := real(data[i-1][j])
 			v := real(data[i][j])
 			if (pv <= val && v > val) || (pv >= val && v < val) {
-        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
 				px[i][j].hits = append(px[i][j].hits, col)
 			}
 		}
@@ -254,7 +256,7 @@ func calculateHitsI(px pixRect, data complexRect, x, y int, val float64, col col
 			pv := imag(data[i][j-1])
 			v := imag(data[i][j])
 			if (pv <= val && v > val) || (pv >= val && v < val) {
-        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
 				px[i][j].hits = append(px[i][j].hits, col)
 			}
 		}
@@ -264,7 +266,7 @@ func calculateHitsI(px pixRect, data complexRect, x, y int, val float64, col col
 			pv := imag(data[i-1][j])
 			v := imag(data[i][j])
 			if (pv <= val && v > val) || (pv >= val && v < val) {
-        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
 				px[i][j].hits = append(px[i][j].hits, col)
 			}
 		}
@@ -278,7 +280,7 @@ func calculateHitsM(px pixRect, data complexRect, x, y int, val float64, col col
 			pv := cmplx.Abs(data[i][j-1])
 			v := cmplx.Abs(data[i][j])
 			if (pv <= val && v > val) || (pv >= val && v < val) {
-        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
 				px[i][j].hits = append(px[i][j].hits, col)
 			}
 		}
@@ -288,7 +290,7 @@ func calculateHitsM(px pixRect, data complexRect, x, y int, val float64, col col
 			pv := cmplx.Abs(data[i-1][j])
 			v := cmplx.Abs(data[i][j])
 			if (pv <= val && v > val) || (pv >= val && v < val) {
-        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
 				px[i][j].hits = append(px[i][j].hits, col)
 			}
 		}
@@ -472,6 +474,13 @@ func cmap(ofn, f string) error {
 	}
 	runtime.GOMAXPROCS(thrN)
 
+	// User defined draw config
+	var dc drawConfig
+	dcMode, err := dc.initFromEnv()
+	if err != nil {
+		return err
+	}
+
 	fmt.Printf("(%d x %d) Real: [%f,%f] Imag: [%f,%f] Threads: %d\n", x, y, r0, r1, i0, i1, thrN)
 
 	// Run
@@ -639,16 +648,19 @@ func cmap(ofn, f string) error {
 	dmr := (maxr - minr) / 255.0
 	dmi := (maxi - mini) / 255.0
 	dmm := (maxm - minm) / 255.0
+	// Info
+	fmt.Printf("Values range: %v - %v, modulo range: %f - %f\n", complex(minr, mini), complex(maxr, maxi), minm, maxm)
 
-	// User defined draw config
-	var dc drawConfig
-	dcMode, err := dc.initFromEnv()
-	if err != nil {
-		return err
-	}
 	if dcMode {
+		// GIF and JPG frames
+		saveGIF := os.Getenv("NOGIF") == ""
+		saveFrames := os.Getenv("JPG") != ""
+		if !saveGIF && !saveFrames {
+			return fmt.Errorf("you need to save GIF or separate frames as JPEGs")
+		}
+
 		lfn := strings.ToLower(ofn)
-		if !strings.Contains(lfn, ".gif") {
+		if saveGIF && !strings.Contains(lfn, ".gif") {
 			return fmt.Errorf("only .gif files can be used for user mode video-like output: %s", ofn)
 		}
 		var images []*image.Paletted
@@ -658,10 +670,10 @@ func cmap(ofn, f string) error {
 			// Prepare structure to hold hits info
 			px := makePixData(x, y)
 			for _, item := range dc.items {
-				r := float64(item.col.R) + 255.0*float64(f)*item.cinc[0]
-				g := float64(item.col.G) + 255.0*float64(f)*item.cinc[1]
-				b := float64(item.col.B) + 255.0*float64(f)*item.cinc[2]
-				a := float64(item.col.A) + 255.0*float64(f)*item.cinc[3]
+				r := float64(item.col.R) + float64(f)*item.cinc[0]
+				g := float64(item.col.G) + float64(f)*item.cinc[1]
+				b := float64(item.col.B) + float64(f)*item.cinc[2]
+				a := float64(item.col.A) + float64(f)*item.cinc[3]
 				if r < 0.0 {
 					r = 0.0
 				}
@@ -686,7 +698,7 @@ func cmap(ofn, f string) error {
 				if a > 255.0 {
 					a = 255.0
 				}
-        v := item.v + float64(f) * item.vinc
+				v := item.v + float64(f)*item.vinc
 				if item.fz {
 					switch item.rim {
 					case "r":
@@ -723,43 +735,46 @@ func cmap(ofn, f string) error {
 					}
 				}
 			}
-      // save single frame
-		  f, err := os.Create(fmt.Sprintf("frame%05d.jpg", f))
-		  if err != nil {
-			  return err
-		  }
-		  if jpegq < 0 {
-			  err = jpeg.Encode(f, target, nil)
-		  } else {
-			  err = jpeg.Encode(f, target, &jpeg.Options{Quality: jpegq})
-		  }
-		  _ = f.Close()
-      if err != nil {
-        return err
-      }
+			// save single frame
+			if saveFrames {
+				f, err := os.Create(fmt.Sprintf("frame%05d.jpg", f))
+				if err != nil {
+					return err
+				}
+				if jpegq < 0 {
+					err = jpeg.Encode(f, target, nil)
+				} else {
+					err = jpeg.Encode(f, target, &jpeg.Options{Quality: jpegq})
+				}
+				_ = f.Close()
+				if err != nil {
+					return err
+				}
+			}
 
-      // Add GIF frame
-			bounds := target.Bounds()
-			palettedImage := image.NewPaletted(bounds, nil)
-			quantizer := gogif.MedianCutQuantizer{NumColor: 64}
-			quantizer.Quantize(palettedImage, bounds, target, image.ZP)
-			images = append(images, palettedImage)
-			delays = append(delays, 0)
+			if saveGIF {
+				// Add GIF frame
+				bounds := target.Bounds()
+				palettedImage := image.NewPaletted(bounds, nil)
+				quantizer := gogif.MedianCutQuantizer{NumColor: 64}
+				quantizer.Quantize(palettedImage, bounds, target, image.ZP)
+				images = append(images, palettedImage)
+				delays = append(delays, 0)
+			}
 		}
-		fout, err := os.Create(ofn)
-		if err != nil {
-			return err
+		if saveGIF {
+			fout, err := os.Create(ofn)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = fout.Close() }()
+			err = gif.EncodeAll(fout, &gif.GIF{Image: images, Delay: delays})
+			if err != nil {
+				return err
+			}
 		}
-		defer func() { _ = fout.Close() }()
-    err = gif.EncodeAll(fout, &gif.GIF{Image: images, Delay: delays})
-    if err != nil {
-      return err
-    }
 		return nil
 	}
-
-	// Info
-	fmt.Printf("Values range: %v - %v, modulo range: %f - %f\n", complex(minr, mini), complex(maxr, maxi), minm, maxm)
 
 	// Prepare structure to hold hits info
 	px := makePixData(x, y)
@@ -902,6 +917,42 @@ I1 - Imag to
 K - increment value to next line: 0-255, default 16
 FC - use first hit color instead of merging color from all hits
 Q - image quality 1-100
+U - define own contours to display, possibly with movement 
+--- for user defined contours
+NOGIF - skip final animation GIF
+JPG - save each frame in JPG file framexxxxx.jpg, xxxxx = frame number
+
+User defined contours:
+Provide U="n_frames;def1;def2;def3;...;defK"
+n_frames - how many GIF animation frames and/or JPEG frames generate
+def1..K - K definitions of countours (has nothing in commont with n_frames)
+each definitions is:
+"fz,rim,v,col,vinc,cinc"
+where:
+fz can be:
+  z - check complex plane (function complex arg) value to match "v"
+  fz - check function complex value to match "v"
+rim can be:
+  r - check if real part of "z" or "fz" (defined above) match "v"
+  i - check if imaginary part of "z" or "fz" (defined above) match "v"
+  m - check if complex modulo/abs of "z" or "fz" (defined above) match "v"
+v - value to draw its countour, for example re(f(z)) = v "fz,r,v" or im(z) = v "z,i,v" etc.
+col - if match then use this col as a color, defined as "r:b:b:a"
+  r - red part of color, range 0-255
+  g - green part of color, range 0-255
+  b - blue part of color, range 0-255
+  a - alpha part of color, range 0-255
+vinc - increase "v" by "vinc" on every animation step
+cinc - increase color by this value on each step (this is a float number that will be rounded to int from 0-255 range but after adding
+actual color can change by +1 after 40 steps or 1 step, it depends, format "ri:gi:bi:ai"
+  ri - red color increment, if any color overflows < 0 or > 255 it saturates to this value.
+  gi - red color increment
+  bi - red color increment
+  ai - red color increment
+
+
+Example final definition:
+  "100;fz,r,0.5,255:0:0:255,-0.01,-0.005:0:0:0;fz,i,0.5,0:0:255:255,-0.01,0:0:-0.005:0;fz,m,1,0:255:0:255,-0.01,0:-0.005:0:0"
 `
 		fmt.Printf("%s\n", helpStr)
 	}
