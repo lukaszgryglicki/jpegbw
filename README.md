@@ -49,6 +49,7 @@ Q=90 R=0.2125 G=0.7154 B=0.0721 LO=5 HI=5 GA=1.41 ./jpegbw in.jpg
 
 # build
 
+- `go get github.com/andybons/gogif`
 - `make && make install`.
 - If you don't have tools required for `make check` do `sudo ./deps.sh`.
 - If you still have any issues with additional check, compile binaries directly: `make jpegbw libjpegbw.so libbyname.so`.

@@ -23,8 +23,8 @@
 *.JP*G
 
 # PNGs
-# *.png
-# *.PNG
+*.png
+*.PNG
 
 # VIM swap files
 *.swp

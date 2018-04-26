@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/gif"
+	"image/jpeg"
 	"image/png"
 	"jpegbw"
 	"math"
@@ -11,8 +13,11 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/andybons/gogif"
 )
 
 type scanline struct {
@@ -30,61 +35,131 @@ type scanline struct {
 type complexRect [][]complex128
 
 type hitInfo struct {
-	hitsR []color.RGBA
-	hitsI []color.RGBA
-	hitsM []color.RGBA
+	hits []color.RGBA
 }
 
 type pixRect [][]hitInfo
 
-func firstColor(ra, ia, ma []color.RGBA) color.RGBA {
-	for _, col := range ra {
-		if col.A == 0 {
-			continue
-		}
-		return col
-	}
-	for _, col := range ia {
-		if col.A == 0 {
-			continue
-		}
-		return col
-	}
-	for _, col := range ma {
-		if col.A == 0 {
-			continue
-		}
-		return col
-	}
-	return color.RGBA{uint8(0), uint8(0), uint8(0), uint8(0xff)}
+type drawConfigItem struct {
+	fz   bool       // false: draw complex plane data (z), true draw function data f(z)
+	rim  string     // can be "r" - real, "i" - imag, "m" - modulo
+	v    float64    // value to draw
+	col  color.RGBA // color to use
+	vinc float64    // value increment (if many frames)
+	cinc []float64  // color increment
 }
 
-func mergeColors(ra, ia, ma []color.RGBA) (uint8, uint8, uint8, uint8) {
+type drawConfig struct {
+	items []drawConfigItem
+	n     int
+}
+
+func (dc *drawConfig) initFromEnv() (bool, error) {
+	s := os.Getenv("U")
+	if s == "" {
+		return false, nil
+	}
+	ary := strings.Split(s, ";")
+	if len(ary) < 2 {
+		return false, fmt.Errorf("required at least two elements separated by ';': %s", s)
+	}
+	n, err := strconv.Atoi(ary[0])
+	if err != nil {
+		return false, err
+	}
+	dc.n = n
+	for idx, item := range ary[1:] {
+		//fz,r,3.14,255:128:192:255,0.01,0.01:-0.01:0:0
+		itemAry := strings.Split(item, ",")
+		if len(itemAry) != 6 {
+			return false, fmt.Errorf("single item must have 6 ',' values: fz,r,v,col,vinc,cinc: '%s', got %d for %d item", item, len(itemAry), idx+1)
+		}
+		var dci drawConfigItem
+		if itemAry[0] == "fz" {
+			dci.fz = true
+		} else if itemAry[0] == "z" {
+			dci.fz = false
+		} else {
+			return false, fmt.Errorf("item %d: '%s' fz value incorrect: '%s' must be 'z' or 'fz'", idx+1, item, itemAry[0])
+		}
+		if itemAry[1] == "r" || itemAry[1] == "i" || itemAry[1] == "m" {
+			dci.rim = itemAry[1]
+		} else {
+			return false, fmt.Errorf("item %d: '%s' rim value incorrect: '%s' must be 'r', 'i' or 'm'", idx+1, item, itemAry[1])
+		}
+		v, err := strconv.ParseFloat(itemAry[2], 64)
+		if err != nil {
+			return false, err
+		}
+		dci.v = v
+		colA := strings.Split(itemAry[3], ":")
+		if len(colA) != 4 {
+			return false, fmt.Errorf("item %d: '%s' col value incorrect: '%s' must be 4 0-255 uint8 values ':' separated", idx+1, item, itemAry[3])
+		}
+		r, err := strconv.Atoi(colA[0])
+		if err != nil {
+			return false, err
+		}
+		g, err := strconv.Atoi(colA[1])
+		if err != nil {
+			return false, err
+		}
+		b, err := strconv.Atoi(colA[2])
+		if err != nil {
+			return false, err
+		}
+		a, err := strconv.Atoi(colA[3])
+		if err != nil {
+			return false, err
+		}
+		if r < 0 || r > 0xff || g < 0 || g > 0xff || b < 0 || b > 0xff || a < 0 || a > 0xff {
+			return false, fmt.Errorf("item %d: '%s' col value incorrect: '%s' all r,g,b,g values must be from 0-255 range", idx+1, item, itemAry[3])
+		}
+		dci.col = color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
+		v, err = strconv.ParseFloat(itemAry[4], 64)
+		if err != nil {
+			return false, err
+		}
+		dci.vinc = v
+		colA = strings.Split(itemAry[5], ":")
+		if len(colA) != 4 {
+			return false, fmt.Errorf("item %d: '%s' colInc value incorrect: '%s' must be 4 float values ':' separated", idx+1, item, itemAry[5])
+		}
+		ri, err := strconv.ParseFloat(colA[0], 64)
+		if err != nil {
+			return false, err
+		}
+		gi, err := strconv.ParseFloat(colA[1], 64)
+		if err != nil {
+			return false, err
+		}
+		bi, err := strconv.ParseFloat(colA[2], 64)
+		if err != nil {
+			return false, err
+		}
+		ai, err := strconv.ParseFloat(colA[3], 64)
+		if err != nil {
+			return false, err
+		}
+		if ri > 1.0 || bi > 1.0 || gi > 1.0 || ai > 1.0 || ri < -1.0 || bi < -1.0 || gi < -1.0 || ai < -1.0 {
+			return false, fmt.Errorf("item %d: '%s' colInc value incorrect: '%s' all ri,gi,bi,gi values must be from -1.0-1.0 range", idx+1, item, itemAry[5])
+		}
+		dci.cinc = []float64{ri, gi, bi, ai}
+		dc.items = append(dc.items, dci)
+	}
+	return true, nil
+}
+
+func firstColor(ha []color.RGBA) color.RGBA {
+	for _, col := range ha {
+		return col
+	}
+	return color.RGBA{uint8(0xff), uint8(0xff), uint8(0xff), uint8(0xff)}
+}
+
+func mergeColors(ha []color.RGBA) (uint8, uint8, uint8, uint8) {
 	r, g, b, a, n := 0, 0, 0, 0, 0
-	for _, col := range ra {
-		if col.A == 0 {
-			continue
-		}
-		r += int(col.R)
-		g += int(col.G)
-		b += int(col.B)
-		a += int(col.A)
-		n++
-	}
-	for _, col := range ia {
-		if col.A == 0 {
-			continue
-		}
-		r += int(col.R)
-		g += int(col.G)
-		b += int(col.B)
-		a += int(col.A)
-		n++
-	}
-	for _, col := range ma {
-		if col.A == 0 {
-			continue
-		}
+	for _, col := range ha {
 		r += int(col.R)
 		g += int(col.G)
 		b += int(col.B)
@@ -92,7 +167,7 @@ func mergeColors(ra, ia, ma []color.RGBA) (uint8, uint8, uint8, uint8) {
 		n++
 	}
 	if n == 0 {
-		return uint8(0), uint8(0), uint8(0), uint8(0xff)
+		return uint8(0xff), uint8(0xff), uint8(0xff), uint8(0xff)
 	}
 	if n > 1 {
 		r /= n
@@ -112,7 +187,7 @@ func (cr complexRect) str() string {
 		yl := len(cr[i])
 		s += fmt.Sprintf("Y[%5d] length: %d: [", i, yl)
 		for j := 0; j < yl; j++ {
-			s += fmt.Sprintf("[%5d,%5d]=%8.3f+%8.3fi ", i, j, real(cr[i][j]), imag(cr[i][j]))
+			s += fmt.Sprintf("[%5d,%5d]=%8.3f+%8.3fi(%8.3f) ", i, j, real(cr[i][j]), imag(cr[i][j]), cmplx.Abs(cr[i][j]))
 		}
 		s += "\n"
 	}
@@ -135,23 +210,12 @@ func (p pixRect) str(x, y int) string {
 	s := ""
 	for i := 0; i < x; i++ {
 		for j := 1; j < y; j++ {
-			h := false
-			lR := len(p[i][j].hitsR)
-			lI := len(p[i][j].hitsI)
-			lM := len(p[i][j].hitsM)
-			if lR > 0 {
-				s += fmt.Sprintf("Re[%d,%d] ", i, j)
-				h = true
-			}
-			if lI > 0 {
-				s += fmt.Sprintf("Im[%d,%d] ", i, j)
-				h = true
-			}
-			if lM > 0 {
-				s += fmt.Sprintf("Mo[%d,%d] ", i, j)
-				h = true
-			}
-			if h {
+			l := len(p[i][j].hits)
+			if l > 0 {
+				s += fmt.Sprintf("hit[%d,%d]: ", i, j)
+				for _, hit := range p[i][j].hits {
+					s += fmt.Sprintf("%v ", hit)
+				}
 				s += "\n"
 			}
 		}
@@ -159,47 +223,73 @@ func (p pixRect) str(x, y int) string {
 	return s
 }
 
-func calculateHits(px pixRect, data complexRect, x, y int, val float64, re, im, mo color.RGBA) {
-	// info: fmt.Printf("calculateHits: %f (%v, %v, %v)\n", val, re, im, mo)
+func calculateHitsR(px pixRect, data complexRect, x, y int, val float64, col color.RGBA) {
+	// info: fmt.Printf("calculateHitsR: %f,%v\n", val, col)
 	for i := 0; i < x; i++ {
 		for j := 1; j < y; j++ {
-			pv := data[i][j-1]
-			v := data[i][j]
-			pvr := real(pv)
-			vr := real(v)
-			pvi := imag(pv)
-			vi := imag(v)
-			pvm := cmplx.Abs(pv)
-			vm := cmplx.Abs(v)
-			if (pvr <= val && vr > val) || (pvr >= val && vr < val) {
-				px[i][j].hitsR = append(px[i][j].hitsR, re)
-			}
-			if (pvi <= val && vi > val) || (pvi >= val && vi < val) {
-				px[i][j].hitsI = append(px[i][j].hitsI, im)
-			}
-			if (pvm <= val && vm > val) || (pvm >= val && vm < val) {
-				px[i][j].hitsM = append(px[i][j].hitsM, mo)
+			pv := real(data[i][j-1])
+			v := real(data[i][j])
+			if (pv <= val && v > val) || (pv >= val && v < val) {
+        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				px[i][j].hits = append(px[i][j].hits, col)
 			}
 		}
 	}
 	for j := 0; j < y; j++ {
 		for i := 1; i < x; i++ {
-			pv := data[i-1][j]
-			v := data[i][j]
-			pvr := real(pv)
-			vr := real(v)
-			pvi := imag(pv)
-			vi := imag(v)
-			pvm := cmplx.Abs(pv)
-			vm := cmplx.Abs(v)
-			if (pvr <= val && vr > val) || (pvr >= val && vr < val) {
-				px[i][j].hitsR = append(px[i][j].hitsR, re)
+			pv := real(data[i-1][j])
+			v := real(data[i][j])
+			if (pv <= val && v > val) || (pv >= val && v < val) {
+        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				px[i][j].hits = append(px[i][j].hits, col)
 			}
-			if (pvi <= val && vi > val) || (pvi >= val && vi < val) {
-				px[i][j].hitsI = append(px[i][j].hitsI, im)
+		}
+	}
+}
+
+func calculateHitsI(px pixRect, data complexRect, x, y int, val float64, col color.RGBA) {
+	// info: fmt.Printf("calculateHitsI: %f,%v\n", val, col)
+	for i := 0; i < x; i++ {
+		for j := 1; j < y; j++ {
+			pv := imag(data[i][j-1])
+			v := imag(data[i][j])
+			if (pv <= val && v > val) || (pv >= val && v < val) {
+        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				px[i][j].hits = append(px[i][j].hits, col)
 			}
-			if (pvm <= val && vm > val) || (pvm >= val && vm < val) {
-				px[i][j].hitsM = append(px[i][j].hitsM, mo)
+		}
+	}
+	for j := 0; j < y; j++ {
+		for i := 1; i < x; i++ {
+			pv := imag(data[i-1][j])
+			v := imag(data[i][j])
+			if (pv <= val && v > val) || (pv >= val && v < val) {
+        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				px[i][j].hits = append(px[i][j].hits, col)
+			}
+		}
+	}
+}
+
+func calculateHitsM(px pixRect, data complexRect, x, y int, val float64, col color.RGBA) {
+	// info: fmt.Printf("calculateHitsM: %f,%v\n", val, col)
+	for i := 0; i < x; i++ {
+		for j := 1; j < y; j++ {
+			pv := cmplx.Abs(data[i][j-1])
+			v := cmplx.Abs(data[i][j])
+			if (pv <= val && v > val) || (pv >= val && v < val) {
+        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				px[i][j].hits = append(px[i][j].hits, col)
+			}
+		}
+	}
+	for j := 0; j < y; j++ {
+		for i := 1; i < x; i++ {
+			pv := cmplx.Abs(data[i-1][j])
+			v := cmplx.Abs(data[i][j])
+			if (pv <= val && v > val) || (pv >= val && v < val) {
+        // debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
+				px[i][j].hits = append(px[i][j].hits, col)
 			}
 		}
 	}
@@ -237,6 +327,23 @@ func cmap(ofn, f string) error {
 	if err != nil {
 		return err
 	}
+
+	// Quality
+	jpegqStr := os.Getenv("Q")
+	jpegq := -1
+	if jpegqStr != "" {
+		v, err := strconv.Atoi(jpegqStr)
+		if err != nil {
+			return err
+		}
+		if v < 1 || v > 100 {
+			return fmt.Errorf("Q must be from 1-100 range")
+		}
+		jpegq = v
+	}
+
+	// Merge colors or use first hit's color?
+	mergeCols := os.Getenv("FC") == ""
 
 	// x, y resolution
 	x := 1000
@@ -529,89 +636,209 @@ func cmap(ofn, f string) error {
 
 	// Info
 	// debug: fmt.Printf("Matrix\n%s\n", data.str())
+	dmr := (maxr - minr) / 255.0
+	dmi := (maxi - mini) / 255.0
+	dmm := (maxm - minm) / 255.0
+
+	// User defined draw config
+	var dc drawConfig
+	dcMode, err := dc.initFromEnv()
+	if err != nil {
+		return err
+	}
+	if dcMode {
+		lfn := strings.ToLower(ofn)
+		if !strings.Contains(lfn, ".gif") {
+			return fmt.Errorf("only .gif files can be used for user mode video-like output: %s", ofn)
+		}
+		var images []*image.Paletted
+		var delays []int
+		for f := 0; f < dc.n; f++ {
+			// info: fmt.Printf("Frame: %d/%d...\n", f+1, dc.n)
+			// Prepare structure to hold hits info
+			px := makePixData(x, y)
+			for _, item := range dc.items {
+				r := float64(item.col.R) + 255.0*float64(f)*item.cinc[0]
+				g := float64(item.col.G) + 255.0*float64(f)*item.cinc[1]
+				b := float64(item.col.B) + 255.0*float64(f)*item.cinc[2]
+				a := float64(item.col.A) + 255.0*float64(f)*item.cinc[3]
+				if r < 0.0 {
+					r = 0.0
+				}
+				if g < 0.0 {
+					g = 0.0
+				}
+				if b < 0.0 {
+					b = 0.0
+				}
+				if a < 0.0 {
+					a = 0.0
+				}
+				if r > 255.0 {
+					r = 255.0
+				}
+				if g > 255.0 {
+					g = 255.0
+				}
+				if b > 255.0 {
+					b = 255.0
+				}
+				if a > 255.0 {
+					a = 255.0
+				}
+        v := item.v + float64(f) * item.vinc
+				if item.fz {
+					switch item.rim {
+					case "r":
+						calculateHitsR(px, data, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+					case "i":
+						calculateHitsI(px, data, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+					case "m":
+						calculateHitsM(px, data, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+					}
+				} else {
+					switch item.rim {
+					case "r":
+						calculateHitsR(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+					case "i":
+						calculateHitsI(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+					case "m":
+						calculateHitsM(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(b), uint8(b), uint8(a)})
+					}
+				}
+			}
+			target := image.NewRGBA(image.Rect(0, 0, x, y))
+			if mergeCols {
+				for i := 0; i < x; i++ {
+					for j := 0; j < y; j++ {
+						r, g, b, a := mergeColors(px[i][j].hits)
+						pixel := color.RGBA{r, g, b, a}
+						target.Set(i, (y-j)-1, pixel)
+					}
+				}
+			} else {
+				for i := 0; i < x; i++ {
+					for j := 0; j < y; j++ {
+						target.Set(i, (y-j)-1, firstColor(px[i][j].hits))
+					}
+				}
+			}
+      // save single frame
+		  f, err := os.Create(fmt.Sprintf("frame%05d.jpg", f))
+		  if err != nil {
+			  return err
+		  }
+		  if jpegq < 0 {
+			  err = jpeg.Encode(f, target, nil)
+		  } else {
+			  err = jpeg.Encode(f, target, &jpeg.Options{Quality: jpegq})
+		  }
+		  _ = f.Close()
+      if err != nil {
+        return err
+      }
+
+      // Add GIF frame
+			bounds := target.Bounds()
+			palettedImage := image.NewPaletted(bounds, nil)
+			quantizer := gogif.MedianCutQuantizer{NumColor: 64}
+			quantizer.Quantize(palettedImage, bounds, target, image.ZP)
+			images = append(images, palettedImage)
+			delays = append(delays, 0)
+		}
+		fout, err := os.Create(ofn)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = fout.Close() }()
+    err = gif.EncodeAll(fout, &gif.GIF{Image: images, Delay: delays})
+    if err != nil {
+      return err
+    }
+		return nil
+	}
+
+	// Info
+	fmt.Printf("Values range: %v - %v, modulo range: %f - %f\n", complex(minr, mini), complex(maxr, maxi), minm, maxm)
 
 	// Prepare structure to hold hits info
 	px := makePixData(x, y)
 
-	// Minumum
-	mi := math.Min(minr, mini)
-	mi = math.Min(mi, minm)
-	// Maximum
-	ma := math.Min(maxr, maxi)
-	ma = math.Min(ma, maxm)
-
-	// Info
-	dm := (ma - mi) / 255.0
-	fmt.Printf("Values range: %v - %v, modulo range: %f - %f, lines range: %f - %f\n", complex(minr, mini), complex(maxr, maxi), minm, maxm, mi, ma)
-
 	// Calculate hits
+	// Real hits
 	last := false
-	kp := 0
-	kpb := false
 	for k := 0; k < 0x100; k += kinc {
-		v := mi + float64(k)*dm
-		if v > 0.0 && !kpb {
-			kp = k
-			kpb = true
-		}
-	}
-	// info: fmt.Printf("First positive modulo k: %d\n", kp)
-	for k := 0; k < 0x100; k += kinc {
-		v := mi + float64(k)*dm
-		calculateHits(
-			px, data, x, y, v,
-			color.RGBA{uint8(0xff - k), uint8(k), uint8(k), 0xff},
-			color.RGBA{uint8(k), uint8(k), uint8(0xff - k), 0xff},
-			color.RGBA{uint8(k), uint8(0xff - (k + kp)), uint8(k), 0xff},
-		)
+		v := minr + float64(k)*dmr
+		calculateHitsR(px, data, x, y, v, color.RGBA{uint8(0xff - k), uint8(k), uint8(k), 0xff})
 		if k == 0xff {
 			last = true
 		}
 	}
 	if !last {
 		// Max must be shown
-		calculateHits(
-			px, data, x, y, ma,
-			color.RGBA{uint8(0), uint8(0xff), uint8(0xff), 0xff},
-			color.RGBA{uint8(0xff), uint8(0xff), uint8(0), 0xff},
-			color.RGBA{uint8(0xff), uint8(0), uint8(0xff), 0xff},
-		)
+		calculateHitsR(px, data, x, y, maxr, color.RGBA{uint8(0), uint8(0xff), uint8(0xff), 0xff})
 	}
+
+	// Imag hist
+	last = false
+	for k := 0; k < 0x100; k += kinc {
+		v := mini + float64(k)*dmi
+		calculateHitsI(px, data, x, y, v, color.RGBA{uint8(k), uint8(k), uint8(0xff - k), 0xff})
+		if k == 0xff {
+			last = true
+		}
+	}
+	if !last {
+		// Max must be shown
+		calculateHitsI(px, data, x, y, maxi, color.RGBA{uint8(0xff), uint8(0xff), uint8(0), 0xff})
+	}
+
+	// Modulo/Abs hits
+	last = false
+	for k := 0; k < 0x100; k += kinc {
+		v := minm + float64(k)*dmm
+		calculateHitsM(px, data, x, y, v, color.RGBA{uint8(k), uint8(0xff - k), uint8(k), 0xff})
+		if k == 0xff {
+			last = true
+		}
+	}
+	if !last {
+		// Max must be shown
+		calculateHitsM(px, data, x, y, maxm, color.RGBA{uint8(0xff), uint8(0), uint8(0xff), 0xff})
+	}
+
 	// Function 0's Re, IM, Modulo
-	// Re = 0 red almost white
-	// Im = 0 blue almost white
-	// Mod = 0 green almost white (it means complex zero, function retuned (0+0i)
-	calculateHits(
-		px, data, x, y, 0.0,
-		color.RGBA{uint8(0xff), uint8(0xc0), uint8(0xce), 0xff},
-		color.RGBA{uint8(0xce), uint8(0xce), uint8(0xff), 0xff},
-		color.RGBA{uint8(0xce), uint8(0xff), uint8(0xce), 0xff},
-	)
+	// Re = 0 dark red
+	// Im = 0 dark blue
+	// Mod = 0 dark green (it means complex zero, function retuned (0+0i)
+	calculateHitsR(px, data, x, y, 0.0, color.RGBA{uint8(0x80), uint8(0), uint8(0), 0xff})
+	calculateHitsI(px, data, x, y, 0.0, color.RGBA{uint8(0), uint8(0), uint8(0x80), 0xff})
+	calculateHitsM(px, data, x, y, 0.0, color.RGBA{uint8(0), uint8(0x80), uint8(0), 0xff})
+
 	// Complex plane axes and unit circle
-	// Re = 0 and Im = 0 white
-	calculateHits(
-		px, complexPlane, x, y, 0.0,
-		color.RGBA{uint8(0xff), uint8(0xff), uint8(0xff), 0xff},
-		color.RGBA{uint8(0xff), uint8(0xff), uint8(0xff), 0xff},
-		color.RGBA{uint8(0x0), uint8(0x0), uint8(0x0), 0}, // Complex Modulo 0 is just a point at (0,0)
-	)
+	// Re = 0 and Im = 0 black
+	calculateHitsR(px, complexPlane, x, y, 0.0, color.RGBA{uint8(0), uint8(0), uint8(0), 0xff})
+	calculateHitsI(px, complexPlane, x, y, 0.0, color.RGBA{uint8(0), uint8(0), uint8(0), 0xff})
 	// Modulo unit circle white
-	calculateHits(
-		px, complexPlane, x, y, 1.0,
-		color.RGBA{uint8(0x0), uint8(0x0), uint8(0x0), 0},
-		color.RGBA{uint8(0x0), uint8(0x0), uint8(0x0), 0},
-		color.RGBA{uint8(0xff), uint8(0xff), uint8(0xff), 0xff},
-	)
+	calculateHitsM(px, complexPlane, x, y, 1.0, color.RGBA{uint8(0), uint8(0), uint8(0), 0xff})
+
 	// debug: fmt.Printf("Hits\n%s\n", px.str(x, y))
 
 	// Output
 	target := image.NewRGBA(image.Rect(0, 0, x, y))
-	for i := 0; i < x; i++ {
-		for j := 0; j < y; j++ {
-			r, g, b, a := mergeColors(px[i][j].hitsR, px[i][j].hitsI, px[i][j].hitsM)
-			pixel := color.RGBA{r, g, b, a}
-			//pixel := firstColor(px[i][j].hitsR, px[i][j].hitsI, px[i][j].hitsM)
-			target.Set(i, (y-j)-1, pixel)
+	if mergeCols {
+		for i := 0; i < x; i++ {
+			for j := 0; j < y; j++ {
+				r, g, b, a := mergeColors(px[i][j].hits)
+				pixel := color.RGBA{r, g, b, a}
+				target.Set(i, (y-j)-1, pixel)
+			}
+		}
+	} else {
+		for i := 0; i < x; i++ {
+			for j := 0; j < y; j++ {
+				target.Set(i, (y-j)-1, firstColor(px[i][j].hits))
+			}
 		}
 	}
 	fout, err := os.Create(ofn)
@@ -619,9 +846,21 @@ func cmap(ofn, f string) error {
 		return err
 	}
 	defer func() { _ = fout.Close() }()
-	err = png.Encode(fout, target)
-	if err != nil {
-		return err
+	var ierr error
+	lfn := strings.ToLower(ofn)
+	if strings.Contains(lfn, ".png") {
+		ierr = png.Encode(fout, target)
+	} else if strings.Contains(lfn, ".jpg") || strings.Contains(lfn, ".jpeg") {
+		if jpegq < 0 {
+			ierr = jpeg.Encode(fout, target, nil)
+		} else {
+			ierr = jpeg.Encode(fout, target, &jpeg.Options{Quality: jpegq})
+		}
+	} else if strings.Contains(lfn, ".gif") {
+		ierr = gif.Encode(fout, target, nil)
+	}
+	if ierr != nil {
+		return ierr
 	}
 
 	dtEnd := time.Now()
@@ -630,10 +869,10 @@ func cmap(ofn, f string) error {
 	fmt.Printf("Real values from minimum to max are: red --> cyan/teal\n")
 	fmt.Printf("Imag values from minimum to max are: blue --> yellow\n")
 	fmt.Printf("Modulo values from minimum to max are: green --> pink\n")
-	fmt.Printf("Re = 0 red almost white\n")
-	fmt.Printf("Im = 0 blue almost white\n")
-	fmt.Printf("Mod = 0 green almost white\n")
-	fmt.Printf("Complex plane Re = 0, Im = 0 and modulo unit circle: white\n")
+	fmt.Printf("Re = 0 dark red\n")
+	fmt.Printf("Im = 0 dark blue\n")
+	fmt.Printf("Mod = 0 dark green\n")
+	fmt.Printf("Complex plane Re = 0, Im = 0 and modulo unit circle: black\n")
 	return nil
 }
 
@@ -648,6 +887,7 @@ func main() {
 		helpStr := `
 Parameters required: output_file_name.png 'function definition'
 Example: LIB="/usr/local/lib/libjpegbw.so" out.png 'csin(x1)'
+PNG, JPG and GIF outputs are supported
 
 Environment variables:
 LIB - if F is used and F calls external functions, thery need to be loaded for this C library
@@ -660,6 +900,8 @@ R1 - Real to
 I0 - Imag from
 I1 - Imag to
 K - increment value to next line: 0-255, default 16
+FC - use first hit color instead of merging color from all hits
+Q - image quality 1-100
 `
 		fmt.Printf("%s\n", helpStr)
 	}
