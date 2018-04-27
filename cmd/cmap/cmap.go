@@ -68,7 +68,7 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 	if len(ary) < 2 {
 		return false, fmt.Errorf("required at least two elements separated by '|': %s", s)
 	}
-	n, err := strconv.Atoi(ary[0])
+	n, err := strconv.Atoi(strings.TrimSpace(ary[0]))
 	if err != nil {
 		return false, err
 	}
@@ -840,9 +840,9 @@ func cmap(ofn, f string) error {
 				}
 				v := real(fz)
 				if item.fz {
-					calculateHits(px, data, lh, x, y, v, item.rim, c, ccL, ccH, cc)
+					calculateHits(px, data, item.lh, x, y, v, item.rim, c, ccL, ccH, cc)
 				} else {
-					calculateHits(px, complexPlane, lh, x, y, v, item.rim, c, ccL, ccH, cc)
+					calculateHits(px, complexPlane, item.lh, x, y, v, item.rim, c, ccL, ccH, cc)
 				}
 			}
 			target := image.NewRGBA(image.Rect(0, 0, x, y))
