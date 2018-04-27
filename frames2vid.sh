@@ -1,2 +1,2 @@
 #!/bin/bash
-ffmpeg -framerate 10 -pattern_type glob -i 'frame*.jpg' -c:v libx264 -r 10 -pix_fmt yuv420p video.mp4
+ffmpeg -framerate 30 -pattern_type glob -i 'frame*.jpg' -c:v libx264 -r 30 -pix_fmt yuv420p video.mp4

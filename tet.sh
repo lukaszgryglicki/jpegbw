@@ -1,6 +1,6 @@
 #!/bin/sh
 # fz;rim;v;rC:rG:rb:cA;vinc;ciR:ciB:ciG:ciA;lh
-LIB="./libtet.so" LH="1" X=200 Y=100 R0=-1 R1=1 I0=-0.5 I1=0.5 JPG=1 U="
+LIB="./libtet.so" LH="1" X=2000 Y=1000 R0=-1 R1=1 I0=-0.5 I1=0.5 JPG=1 U="
 201|
 fz;r;2;255:0:0:255;x1-4*x2;0:0:0:0;1|
 fz;i;2;0:0:255:255;x1-4*x2;0:0:0:0;1|
