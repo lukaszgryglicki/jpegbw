@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"image"
 	"image/color"
@@ -12,6 +13,7 @@ import (
 	"math/cmplx"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,7 +37,8 @@ type scanline struct {
 type complexRect [][]complex128
 
 type hitInfo struct {
-	hits []color.RGBA
+	hits  []color.RGBA
+	types []int // 0 - contour, -1 - value below, 1 - value above, -2 - none of the above
 }
 
 type pixRect [][]hitInfo
@@ -47,6 +50,7 @@ type drawConfigItem struct {
 	col  color.RGBA // color to use
 	vinc float64    // value increment (if many frames)
 	cinc []float64  // color increment
+  lh   bool       // false - contours only, true - draw also lo/hi values with blended color
 }
 
 type drawConfig struct {
@@ -70,10 +74,10 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 	dc.n = n
 	for idx, item := range ary[1:] {
 		item := strings.TrimSpace(item)
-		//fz,r,3.14,255:128:192:255,0.01,0.01:-0.01:0:0
+		//fz,r,3.14,255:128:192:255,0.01,0.01:-0.01:0:0,0
 		ary := strings.Split(item, ",")
-		if len(ary) != 6 {
-			return false, fmt.Errorf("single item must have 6 ',' values: fz,r,v,col,vinc,cinc: '%s', got %d for %d item", item, len(ary), idx+1)
+		if len(ary) != 7 {
+			return false, fmt.Errorf("single item must have 6 ',' values: fz,r,v,col,vinc,cinc,lh: '%s', got %d for %d item", item, len(ary), idx+1)
 		}
 		itemAry := []string{}
 		for _, el := range ary {
@@ -147,26 +151,69 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 			return false, err
 		}
 		dci.cinc = []float64{ri, gi, bi, ai}
+		if itemAry[6] == "1" {
+			dci.lh = true
+		} else if itemAry[6] == "0" {
+			dci.lh = false
+		} else {
+			return false, fmt.Errorf("item %d: '%s' lh value incorrect: '%s' must be '1' or '0'", idx+1, item, itemAry[6])
+		}
 		dc.items = append(dc.items, dci)
 	}
 	return true, nil
 }
 
-func firstColor(ha []color.RGBA) color.RGBA {
+func firstColor(ha []color.RGBA, ty []int) color.RGBA {
+	for i, col := range ha {
+		if ty[i] != 0 {
+			continue
+		}
+		return col
+	}
+	for i, col := range ha {
+		if ty[i] == -2 {
+			continue
+		}
+		return col
+	}
 	for _, col := range ha {
 		return col
 	}
 	return color.RGBA{uint8(0xff), uint8(0xff), uint8(0xff), uint8(0xff)}
 }
 
-func mergeColors(ha []color.RGBA) (uint8, uint8, uint8, uint8) {
+func mergeColors(ha []color.RGBA, ty []int) (uint8, uint8, uint8, uint8) {
 	r, g, b, a, n := 0, 0, 0, 0, 0
-	for _, col := range ha {
+	for i, col := range ha {
+		if ty[i] != 0 {
+			continue
+		}
 		r += int(col.R)
 		g += int(col.G)
 		b += int(col.B)
 		a += int(col.A)
 		n++
+	}
+	if n == 0 {
+		for i, col := range ha {
+			if ty[i] == -2 {
+				continue
+			}
+			r += int(col.R)
+			g += int(col.G)
+			b += int(col.B)
+			a += int(col.A)
+			n++
+		}
+		if n == 0 {
+			for _, col := range ha {
+				r += int(col.R)
+				g += int(col.G)
+				b += int(col.B)
+				a += int(col.A)
+				n++
+			}
+		}
 	}
 	if n == 0 {
 		return uint8(0xff), uint8(0xff), uint8(0xff), uint8(0xff)
@@ -225,73 +272,127 @@ func (p pixRect) str(x, y int) string {
 	return s
 }
 
-func calculateHitsR(px pixRect, data complexRect, x, y int, val float64, col color.RGBA) {
-	// info: fmt.Printf("calculateHitsR: %f,%v\n", val, col)
-	for i := 0; i < x; i++ {
-		for j := 1; j < y; j++ {
-			pv := real(data[i][j-1])
-			v := real(data[i][j])
-			if (pv <= val && v > val) || (pv >= val && v < val) {
-				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
-				px[i][j].hits = append(px[i][j].hits, col)
-			}
-		}
+func colorLoHi(c color.RGBA) (color.RGBA, color.RGBA) {
+	lo := color.RGBA{
+		uint8(0xff - (c.R >> 1)),
+		uint8(0xff - (c.G >> 1)),
+		uint8(0xff - (c.B >> 1)),
+		uint8(0xff),
 	}
-	for j := 0; j < y; j++ {
-		for i := 1; i < x; i++ {
-			pv := real(data[i-1][j])
-			v := real(data[i][j])
-			if (pv <= val && v > val) || (pv >= val && v < val) {
-				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
-				px[i][j].hits = append(px[i][j].hits, col)
-			}
-		}
+	hi := color.RGBA{
+		uint8(0xff - ((c.G + c.B) >> 2)),
+		uint8(0xff - ((c.R + c.B) >> 2)),
+		uint8(0xff - ((c.R + c.G) >> 2)),
+		uint8(0xff),
 	}
+	// debug: fmt.Printf("%v --> (%v, %v)\n", c, lo, hi)
+	return lo, hi
 }
 
-func calculateHitsI(px pixRect, data complexRect, x, y int, val float64, col color.RGBA) {
-	// info: fmt.Printf("calculateHitsI: %f,%v\n", val, col)
-	for i := 0; i < x; i++ {
-		for j := 1; j < y; j++ {
-			pv := imag(data[i][j-1])
-			v := imag(data[i][j])
-			if (pv <= val && v > val) || (pv >= val && v < val) {
-				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
-				px[i][j].hits = append(px[i][j].hits, col)
-			}
-		}
+func calculateHits(px pixRect, data complexRect, lh bool, x, y int, val float64, rib string, colC, colL, colH, colU color.RGBA) {
+	// info: fmt.Printf("calculateHits: lh=%v val=%f, rib=%s, C=%v, L=%v, H=%v, U=%v\n", lh, val, rib, colC, colL, colH, colU)
+	var sel func(complex128) float64
+	if rib == "r" {
+		sel = func(z complex128) float64 { return real(z) }
+	} else if rib == "i" {
+		sel = func(z complex128) float64 { return imag(z) }
+	} else if rib == "m" {
+		sel = cmplx.Abs
+	} else {
+		return
 	}
-	for j := 0; j < y; j++ {
-		for i := 1; i < x; i++ {
-			pv := imag(data[i-1][j])
-			v := imag(data[i][j])
-			if (pv <= val && v > val) || (pv >= val && v < val) {
-				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
-				px[i][j].hits = append(px[i][j].hits, col)
-			}
-		}
-	}
-}
 
-func calculateHitsM(px pixRect, data complexRect, x, y int, val float64, col color.RGBA) {
-	// info: fmt.Printf("calculateHitsM: %f,%v\n", val, col)
+	if !lh {
+		for i := 0; i < x; i++ {
+			for j := 1; j < y; j++ {
+				pv := sel(data[i][j-1])
+				v := sel(data[i][j])
+				if (pv <= val && v > val) || (pv >= val && v < val) {
+					px[i][j].hits = append(px[i][j].hits, colC)
+					px[i][j].types = append(px[i][j].types, 0)
+				}
+			}
+		}
+		for j := 0; j < y; j++ {
+			for i := 1; i < x; i++ {
+				pv := sel(data[i-1][j])
+				v := sel(data[i][j])
+				if (pv <= val && v > val) || (pv >= val && v < val) {
+					px[i][j].hits = append(px[i][j].hits, colC)
+					px[i][j].types = append(px[i][j].types, 0)
+				}
+			}
+		}
+		return
+	}
+
+	// Hits info
+	m1 := make([]int, x*y)
+	m2 := make([]int, x*y)
+
 	for i := 0; i < x; i++ {
+		iy := i * y
 		for j := 1; j < y; j++ {
-			pv := cmplx.Abs(data[i][j-1])
-			v := cmplx.Abs(data[i][j])
+			arg := iy + j
+			pv := sel(data[i][j-1])
+			v := sel(data[i][j])
 			if (pv <= val && v > val) || (pv >= val && v < val) {
-				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
-				px[i][j].hits = append(px[i][j].hits, col)
+				m1[arg] = 0
+			} else if pv <= val && v <= val {
+				m1[arg] = -1
+			} else if pv >= val && v >= v {
+				m1[arg] = 1
+			} else {
+				m1[arg] = -2
 			}
 		}
 	}
 	for j := 0; j < y; j++ {
 		for i := 1; i < x; i++ {
-			pv := cmplx.Abs(data[i-1][j])
-			v := cmplx.Abs(data[i][j])
+			arg := i*y + j
+			pv := sel(data[i-1][j])
+			v := sel(data[i][j])
 			if (pv <= val && v > val) || (pv >= val && v < val) {
-				// debug: fmt.Printf("hit: (%f,%f) crossed %f\n", pv, v, val)
-				px[i][j].hits = append(px[i][j].hits, col)
+				m2[arg] = 0
+			} else if pv <= val && v <= val {
+				m2[arg] = -1
+			} else if pv >= val && v >= v {
+				m2[arg] = 1
+			} else {
+				m2[arg] = -2
+			}
+		}
+	}
+	ca := colC.A
+	la := colL.A
+	ha := colH.A
+	ua := colU.A
+	for i := 0; i < x; i++ {
+		iy := i * y
+		for j := 1; j < y; j++ {
+			arg := iy + j
+			v1 := m1[arg]
+			v2 := m2[arg]
+			if v1 == 0 || v2 == 0 {
+				if ca != 0 {
+					px[i][j].hits = append(px[i][j].hits, colC)
+					px[i][j].types = append(px[i][j].types, 0)
+				}
+			} else if v1 == -1 && v2 == -1 {
+				if la != 0 {
+					px[i][j].hits = append(px[i][j].hits, colL)
+					px[i][j].types = append(px[i][j].types, -1)
+				}
+			} else if v1 == 1 && v2 == 1 {
+				if ha != 0 {
+					px[i][j].hits = append(px[i][j].hits, colH)
+					px[i][j].types = append(px[i][j].types, 1)
+				}
+			} else {
+				if ua != 0 {
+					px[i][j].hits = append(px[i][j].hits, colU)
+					px[i][j].types = append(px[i][j].types, -2)
+				}
 			}
 		}
 	}
@@ -651,6 +752,16 @@ func cmap(ofn, f string) error {
 	// Info
 	fmt.Printf("Values range: %v - %v, modulo range: %f - %f\n", complex(minr, mini), complex(maxr, maxi), minm, maxm)
 
+	// Zero color
+	cc := color.RGBA{uint8(255), uint8(255), uint8(255), uint8(0)}
+	ccL := cc
+	ccH := cc
+	// Do we want Lo/Hi blended colors in addition to contour?
+	lh := os.Getenv("LH") != ""
+
+	// Flushing before endline
+	flush := bufio.NewWriter(os.Stdout)
+
 	if dcMode {
 		// GIF and JPG frames
 		saveGIF := os.Getenv("NOGIF") == ""
@@ -665,8 +776,10 @@ func cmap(ofn, f string) error {
 		}
 		var images []*image.Paletted
 		var delays []int
+    fmt.Printf("%d frames\n", dc.n)
 		for f := 0; f < dc.n; f++ {
-			// info: fmt.Printf("Frame: %d/%d...\n", f+1, dc.n)
+			fmt.Printf("%d ", f+1)
+			_ = flush.Flush()
 			// Prepare structure to hold hits info
 			px := makePixData(x, y)
 			for _, item := range dc.items {
@@ -698,32 +811,22 @@ func cmap(ofn, f string) error {
 				if a > 255.0 {
 					a = 255.0
 				}
+				c := color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
+				if item.lh {
+					ccL, ccH = colorLoHi(c)
+				}
 				v := item.v + float64(f)*item.vinc
 				if item.fz {
-					switch item.rim {
-					case "r":
-						calculateHitsR(px, data, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
-					case "i":
-						calculateHitsI(px, data, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
-					case "m":
-						calculateHitsM(px, data, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
-					}
+					calculateHits(px, data, lh, x, y, v, item.rim, c, ccL, ccH, cc)
 				} else {
-					switch item.rim {
-					case "r":
-						calculateHitsR(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
-					case "i":
-						calculateHitsI(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
-					case "m":
-						calculateHitsM(px, complexPlane, x, y, v, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
-					}
+					calculateHits(px, complexPlane, lh, x, y, v, item.rim, c, ccL, ccH, cc)
 				}
 			}
 			target := image.NewRGBA(image.Rect(0, 0, x, y))
 			if mergeCols {
 				for i := 0; i < x; i++ {
 					for j := 0; j < y; j++ {
-						r, g, b, a := mergeColors(px[i][j].hits)
+						r, g, b, a := mergeColors(px[i][j].hits, px[i][j].types)
 						pixel := color.RGBA{r, g, b, a}
 						target.Set(i, (y-j)-1, pixel)
 					}
@@ -731,7 +834,7 @@ func cmap(ofn, f string) error {
 			} else {
 				for i := 0; i < x; i++ {
 					for j := 0; j < y; j++ {
-						target.Set(i, (y-j)-1, firstColor(px[i][j].hits))
+						target.Set(i, (y-j)-1, firstColor(px[i][j].hits, px[i][j].types))
 					}
 				}
 			}
@@ -784,58 +887,106 @@ func cmap(ofn, f string) error {
 	last := false
 	for k := 0; k < 0x100; k += kinc {
 		v := minr + float64(k)*dmr
-		calculateHitsR(px, data, x, y, v, color.RGBA{uint8(0xff - k), uint8(k), uint8(k), 0xff})
+		c := color.RGBA{uint8(0xff - k), uint8(k), uint8(k), 0xff}
+		if lh {
+			ccL, ccH = colorLoHi(c)
+		}
+		calculateHits(px, data, lh, x, y, v, "r", c, ccL, ccH, cc)
 		if k == 0xff {
 			last = true
 		}
 	}
 	if !last {
 		// Max must be shown
-		calculateHitsR(px, data, x, y, maxr, color.RGBA{uint8(0), uint8(0xff), uint8(0xff), 0xff})
+		c := color.RGBA{uint8(0), uint8(0xff), uint8(0xff), 0xff}
+		if lh {
+			ccL, ccH = colorLoHi(c)
+		}
+		calculateHits(px, data, lh, x, y, maxr, "r", c, ccL, ccH, cc)
 	}
 
-	// Imag hist
+	// Imag hits
 	last = false
 	for k := 0; k < 0x100; k += kinc {
 		v := mini + float64(k)*dmi
-		calculateHitsI(px, data, x, y, v, color.RGBA{uint8(k), uint8(k), uint8(0xff - k), 0xff})
+		c := color.RGBA{uint8(k), uint8(k), uint8(0xff - k), 0xff}
+		if lh {
+			ccL, ccH = colorLoHi(c)
+		}
+		calculateHits(px, data, lh, x, y, v, "i", c, ccL, ccH, cc)
 		if k == 0xff {
 			last = true
 		}
 	}
 	if !last {
 		// Max must be shown
-		calculateHitsI(px, data, x, y, maxi, color.RGBA{uint8(0xff), uint8(0xff), uint8(0), 0xff})
+		c := color.RGBA{uint8(0xff), uint8(0xff), uint8(0), 0xff}
+		if lh {
+			ccL, ccH = colorLoHi(c)
+		}
+		calculateHits(px, data, lh, x, y, maxi, "i", c, ccL, ccH, cc)
 	}
 
 	// Modulo/Abs hits
 	last = false
 	for k := 0; k < 0x100; k += kinc {
 		v := minm + float64(k)*dmm
-		calculateHitsM(px, data, x, y, v, color.RGBA{uint8(k), uint8(0xff - k), uint8(k), 0xff})
+		c := color.RGBA{uint8(k), uint8(0xff - k), uint8(k), 0xff}
+		if lh {
+			ccL, ccH = colorLoHi(c)
+		}
+		calculateHits(px, data, lh, x, y, v, "m", c, ccL, ccH, cc)
 		if k == 0xff {
 			last = true
 		}
 	}
 	if !last {
 		// Max must be shown
-		calculateHitsM(px, data, x, y, maxm, color.RGBA{uint8(0xff), uint8(0), uint8(0xff), 0xff})
+		c := color.RGBA{uint8(0xff), uint8(0), uint8(0xff), 0xff}
+		if lh {
+			ccL, ccH = colorLoHi(c)
+		}
+		calculateHits(px, data, lh, x, y, maxm, "m", c, ccL, ccH, cc)
 	}
 
 	// Function 0's Re, IM, Modulo
 	// Re = 0 dark red
 	// Im = 0 dark blue
 	// Mod = 0 dark green (it means complex zero, function retuned (0+0i)
-	calculateHitsR(px, data, x, y, 0.0, color.RGBA{uint8(0x80), uint8(0), uint8(0), 0xff})
-	calculateHitsI(px, data, x, y, 0.0, color.RGBA{uint8(0), uint8(0), uint8(0x80), 0xff})
-	calculateHitsM(px, data, x, y, 0.0, color.RGBA{uint8(0), uint8(0x80), uint8(0), 0xff})
+	c := color.RGBA{uint8(0x80), uint8(0), uint8(0), 0xff}
+	if lh {
+		ccL, ccH = colorLoHi(c)
+	}
+	calculateHits(px, data, lh, x, y, 0.0, "r", c, ccL, ccH, cc)
+	c = color.RGBA{uint8(0), uint8(0), uint8(0x80), 0xff}
+	if lh {
+		ccL, ccH = colorLoHi(c)
+	}
+	calculateHits(px, data, lh, x, y, 0.0, "i", c, ccL, ccH, cc)
+	c = color.RGBA{uint8(0), uint8(0x80), uint8(0), 0xff}
+	if lh {
+		ccL, ccH = colorLoHi(c)
+	}
+	calculateHits(px, data, lh, x, y, 0.0, "m", c, ccL, ccH, cc)
 
 	// Complex plane axes and unit circle
 	// Re = 0 and Im = 0 black
-	calculateHitsR(px, complexPlane, x, y, 0.0, color.RGBA{uint8(0), uint8(0), uint8(0), 0xff})
-	calculateHitsI(px, complexPlane, x, y, 0.0, color.RGBA{uint8(0), uint8(0), uint8(0), 0xff})
+	c = color.RGBA{uint8(0), uint8(0), uint8(0), 0xff}
+	if lh {
+		ccL, ccH = colorLoHi(c)
+	}
+	calculateHits(px, complexPlane, lh, x, y, 0.0, "r", c, ccL, ccH, cc)
+	c = color.RGBA{uint8(0), uint8(0), uint8(0), 0xff}
+	if lh {
+		ccL, ccH = colorLoHi(c)
+	}
+	calculateHits(px, complexPlane, lh, x, y, 0.0, "i", c, ccL, ccH, cc)
 	// Modulo unit circle white
-	calculateHitsM(px, complexPlane, x, y, 1.0, color.RGBA{uint8(0), uint8(0), uint8(0), 0xff})
+	c = color.RGBA{uint8(0), uint8(0), uint8(0), 0xff}
+	if lh {
+		ccL, ccH = colorLoHi(c)
+	}
+	calculateHits(px, complexPlane, lh, x, y, 1.0, "m", c, ccL, ccH, cc)
 
 	// debug: fmt.Printf("Hits\n%s\n", px.str(x, y))
 
@@ -844,7 +995,7 @@ func cmap(ofn, f string) error {
 	if mergeCols {
 		for i := 0; i < x; i++ {
 			for j := 0; j < y; j++ {
-				r, g, b, a := mergeColors(px[i][j].hits)
+				r, g, b, a := mergeColors(px[i][j].hits, px[i][j].types)
 				pixel := color.RGBA{r, g, b, a}
 				target.Set(i, (y-j)-1, pixel)
 			}
@@ -852,7 +1003,7 @@ func cmap(ofn, f string) error {
 	} else {
 		for i := 0; i < x; i++ {
 			for j := 0; j < y; j++ {
-				target.Set(i, (y-j)-1, firstColor(px[i][j].hits))
+				target.Set(i, (y-j)-1, firstColor(px[i][j].hits, px[i][j].types))
 			}
 		}
 	}
@@ -894,6 +1045,16 @@ func cmap(ofn, f string) error {
 func main() {
 	dtStart := time.Now()
 	if len(os.Args) >= 3 {
+		prof := os.Getenv("PR")
+		if prof != "" {
+			f, err := os.Create(prof)
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				os.Exit(1)
+			}
+			_ = pprof.StartCPUProfile(f)
+			defer pprof.StopCPUProfile()
+		}
 		err := cmap(os.Args[1], os.Args[2])
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
@@ -918,6 +1079,8 @@ K - increment value to next line: 0-255, default 16
 FC - use first hit color instead of merging color from all hits
 Q - image quality 1-100
 U - define own contours to display, possibly with movement 
+LH - draw lo/hi values (blended color of coutour chart - slows down a lot)
+PR - dump CPU profile to a given file
 --- for user defined contours
 NOGIF - skip final animation GIF
 JPG - save each frame in JPG file framexxxxx.jpg, xxxxx = frame number
@@ -928,6 +1091,7 @@ n_frames - how many GIF animation frames and/or JPEG frames generate
 def1..K - K definitions of countours (has nothing in commont with n_frames)
 each definitions is:
 "fz,rim,v,col,vinc,cinc"
+"fz,rim,v,rC:rG:rb:cA,vinc,ciR:ciB:ciG:ciA"
 where:
 fz can be:
   z - check complex plane (function complex arg) value to match "v"
