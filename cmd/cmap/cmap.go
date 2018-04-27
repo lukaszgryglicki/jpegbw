@@ -63,9 +63,9 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 	if s == "" {
 		return false, nil
 	}
-	ary := strings.Split(strings.TrimSpace(s), ";")
+	ary := strings.Split(strings.TrimSpace(s), "|")
 	if len(ary) < 2 {
-		return false, fmt.Errorf("required at least two elements separated by ';': %s", s)
+		return false, fmt.Errorf("required at least two elements separated by '|': %s", s)
 	}
 	n, err := strconv.Atoi(ary[0])
 	if err != nil {
@@ -74,10 +74,10 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 	dc.n = n
 	for idx, item := range ary[1:] {
 		item := strings.TrimSpace(item)
-		//fz,r,3.14,255:128:192:255,0.01,0.01:-0.01:0:0,0
-		ary := strings.Split(item, ",")
+		//fz;r;3.14;255:128:192:255;0.01;0.01:-0.01:0:0;0
+		ary := strings.Split(item, ";")
 		if len(ary) != 7 {
-			return false, fmt.Errorf("single item must have 6 ',' values: fz,r,v,col,vinc,cinc,lh: '%s', got %d for %d item", item, len(ary), idx+1)
+			return false, fmt.Errorf("single item must have 6 ',' values: fz;r;v;col;vinc;cinc;lh: '%s', got %d for %d item", item, len(ary), idx+1)
 		}
 		itemAry := []string{}
 		for _, el := range ary {
@@ -1086,12 +1086,12 @@ NOGIF - skip final animation GIF
 JPG - save each frame in JPG file framexxxxx.jpg, xxxxx = frame number
 
 User defined contours:
-Provide U="n_frames;def1;def2;def3;...;defK"
+Provide U="n_frames|def1|def2|def3|...|defK"
 n_frames - how many GIF animation frames and/or JPEG frames generate
 def1..K - K definitions of countours (has nothing in commont with n_frames)
 each definitions is:
-"fz,rim,v,col,vinc,cinc"
-"fz,rim,v,rC:rG:rb:cA,vinc,ciR:ciB:ciG:ciA"
+"fz;rim;v;col;vinc;cinc;lh"
+"fz;rim;v;rC:rG:rb:cA;vinc;ciR:ciB:ciG:ciA;lh"
 where:
 fz can be:
   z - check complex plane (function complex arg) value to match "v"
@@ -1108,6 +1108,7 @@ col - if match then use this col as a color, defined as "r:b:b:a"
   a - alpha part of color, range 0-255
 vinc - increase "v" by "vinc" on every animation step
 cinc - increase color by this value on each step (this is a float number that will be rounded to int from 0-255 range but after adding
+  You can use function to increase value
 actual color can change by +1 after 40 steps or 1 step, it depends, format "ri:gi:bi:ai"
   ri - red color increment, if any color overflows < 0 or > 255 it saturates to this value.
   gi - red color increment
@@ -1116,7 +1117,7 @@ actual color can change by +1 after 40 steps or 1 step, it depends, format "ri:g
 
 
 Example final definition:
-  "100;fz,r,0.5,255:0:0:255,-0.01,-0.005:0:0:0;fz,i,0.5,0:0:255:255,-0.01,0:0:-0.005:0;fz,m,1,0:255:0:255,-0.01,0:-0.005:0:0"
+  "100|fz;r;0.5;255:0:0:255;-0.01;-0.005:0:0:0|fz;i;0.5;0:0:255:255;-0.01;0:0:-0.005:0|fz;m;1;0:255:0:255;-0.01;0:-0.005:0:0"
 `
 		fmt.Printf("%s\n", helpStr)
 	}
