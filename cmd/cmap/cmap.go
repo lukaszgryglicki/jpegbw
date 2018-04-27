@@ -44,13 +44,13 @@ type hitInfo struct {
 type pixRect [][]hitInfo
 
 type drawConfigItem struct {
-	fz   bool       // false: draw complex plane data (z), true draw function data f(z)
-	rim  string     // can be "r" - real, "i" - imag, "m" - modulo
-	v    float64    // value to draw
-	col  color.RGBA // color to use
-	vinc float64    // value increment (if many frames)
-	cinc []float64  // color increment
-  lh   bool       // false - contours only, true - draw also lo/hi values with blended color
+	fz    bool       // false: draw complex plane data (z), true draw function data f(z)
+	rim   string     // can be "r" - real, "i" - imag, "m" - modulo
+	v     float64    // value to draw
+	col   color.RGBA // color to use
+	nextv string     // value increment (if many frames) - this is a FparF function definition it receives "v" and 0-1 fraction (for frames 1-n)
+	cinc  []float64  // color increment
+	lh    bool       // false - contours only, true - draw also lo/hi values with blended color
 }
 
 type drawConfig struct {
@@ -59,6 +59,7 @@ type drawConfig struct {
 }
 
 func (dc *drawConfig) initFromEnv() (bool, error) {
+	var fctx jpegbw.FparCtx
 	s := os.Getenv("U")
 	if s == "" {
 		return false, nil
@@ -77,7 +78,7 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 		//fz;r;3.14;255:128:192:255;0.01;0.01:-0.01:0:0;0
 		ary := strings.Split(item, ";")
 		if len(ary) != 7 {
-			return false, fmt.Errorf("single item must have 6 ',' values: fz;r;v;col;vinc;cinc;lh: '%s', got %d for %d item", item, len(ary), idx+1)
+			return false, fmt.Errorf("single item must have 6 ',' values: fz;r;v;col;nextv(x1,x2);cinc;lh: '%s', got %d for %d item", item, len(ary), idx+1)
 		}
 		itemAry := []string{}
 		for _, el := range ary {
@@ -125,11 +126,16 @@ func (dc *drawConfig) initFromEnv() (bool, error) {
 			return false, fmt.Errorf("item %d: '%s' col value incorrect: '%s' all r,g,b,g values must be from 0-255 range", idx+1, item, itemAry[3])
 		}
 		dci.col = color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
-		v, err = strconv.ParseFloat(itemAry[4], 64)
+		fdef := itemAry[4]
+		err = fctx.FparFunction(fdef)
 		if err != nil {
 			return false, err
 		}
-		dci.vinc = v
+		err = fctx.FparOK(2)
+		if err != nil {
+			return false, err
+		}
+		dci.nextv = fdef
 		colA = strings.Split(itemAry[5], ":")
 		if len(colA) != 4 {
 			return false, fmt.Errorf("item %d: '%s' colInc value incorrect: '%s' must be 4 float values ':' separated", idx+1, item, itemAry[5])
@@ -426,7 +432,7 @@ func cmap(ofn, f string) error {
 	if err != nil {
 		return err
 	}
-	err = fctx.FparOK(1)
+	err = fctx.FparOK(2)
 	if err != nil {
 		return err
 	}
@@ -776,13 +782,18 @@ func cmap(ofn, f string) error {
 		}
 		var images []*image.Paletted
 		var delays []int
-    fmt.Printf("%d frames\n", dc.n)
+		fmt.Printf("%d frames\n", dc.n)
 		for f := 0; f < dc.n; f++ {
+			ff := 0.0
+			if dc.n > 1 {
+				ff = float64(f) / float64(dc.n-1)
+			}
 			fmt.Printf("%d ", f+1)
 			_ = flush.Flush()
 			// Prepare structure to hold hits info
 			px := makePixData(x, y)
 			for _, item := range dc.items {
+				var fc jpegbw.FparCtx
 				r := float64(item.col.R) + float64(f)*item.cinc[0]
 				g := float64(item.col.G) + float64(f)*item.cinc[1]
 				b := float64(item.col.B) + float64(f)*item.cinc[2]
@@ -815,7 +826,19 @@ func cmap(ofn, f string) error {
 				if item.lh {
 					ccL, ccH = colorLoHi(c)
 				}
-				v := item.v + float64(f)*item.vinc
+				err := fc.FparFunction(item.nextv)
+				if err != nil {
+					return err
+				}
+				err = fc.FparOK(2)
+				if err != nil {
+					return err
+				}
+				fz, err := fc.FparF([]complex128{complex(item.v, 0.0), complex(ff, 0.0)})
+				if err != nil {
+					return err
+				}
+				v := real(fz)
 				if item.fz {
 					calculateHits(px, data, lh, x, y, v, item.rim, c, ccL, ccH, cc)
 				} else {
@@ -1090,8 +1113,8 @@ Provide U="n_frames|def1|def2|def3|...|defK"
 n_frames - how many GIF animation frames and/or JPEG frames generate
 def1..K - K definitions of countours (has nothing in commont with n_frames)
 each definitions is:
-"fz;rim;v;col;vinc;cinc;lh"
-"fz;rim;v;rC:rG:rb:cA;vinc;ciR:ciB:ciG:ciA;lh"
+"fz;rim;v;col;nextv(x1,x2);cinc;lh"
+"fz;rim;v;rC:rG:rb:cA;nextv(x1,x2);ciR:ciB:ciG:ciA;lh"
 where:
 fz can be:
   z - check complex plane (function complex arg) value to match "v"
@@ -1106,9 +1129,11 @@ col - if match then use this col as a color, defined as "r:b:b:a"
   g - green part of color, range 0-255
   b - blue part of color, range 0-255
   a - alpha part of color, range 0-255
-vinc - increase "v" by "vinc" on every animation step
+nextv(x1,x2) - function to get "v" value in next frames, to increement from v to v+2 on all frames on each frame use "x1+x2*2"
+  x1 receives start "v"
+  x2 is changing from 0 to 1 for frames 1-n_frames
+  function's return real value is used
 cinc - increase color by this value on each step (this is a float number that will be rounded to int from 0-255 range but after adding
-  You can use function to increase value
 actual color can change by +1 after 40 steps or 1 step, it depends, format "ri:gi:bi:ai"
   ri - red color increment, if any color overflows < 0 or > 255 it saturates to this value.
   gi - red color increment
@@ -1118,6 +1143,8 @@ actual color can change by +1 after 40 steps or 1 step, it depends, format "ri:g
 
 Example final definition:
   "100|fz;r;0.5;255:0:0:255;-0.01;-0.005:0:0:0|fz;i;0.5;0:0:255:255;-0.01;0:0:-0.005:0|fz;m;1;0:255:0:255;-0.01;0:-0.005:0:0"
+Example test call:
+  LIB="libtet.so" U="11|fz;r;-1;255:0:0:255;x1+2*x2;0:0:0:0;1" ./cmap out.gif "x1"
 `
 		fmt.Printf("%s\n", helpStr)
 	}
