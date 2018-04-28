@@ -295,7 +295,7 @@ func colorLoHi(c color.RGBA) (color.RGBA, color.RGBA) {
 	return lo, hi
 }
 
-func calculateHits(px pixRect, data complexRect, lh bool, x, y int, val float64, rib string, colC, colL, colH, colU color.RGBA) {
+func calculateHits(px pixRect, data complexRect, thrN int, lh bool, x, y int, val float64, rib string, colC, colL, colH, colU color.RGBA) {
 	// info: fmt.Printf("calculateHits: lh=%v val=%f, rib=%s, C=%v, L=%v, H=%v, U=%v\n", lh, val, rib, colC, colL, colH, colU)
 	var sel func(complex128) float64
 	if rib == "r" {
@@ -307,27 +307,53 @@ func calculateHits(px pixRect, data complexRect, lh bool, x, y int, val float64,
 	} else {
 		return
 	}
+	n := 0
+	ch := make(chan struct{})
 
 	if !lh {
-		for i := 0; i < x; i++ {
-			for j := 1; j < y; j++ {
-				pv := sel(data[i][j-1])
-				v := sel(data[i][j])
-				if (pv <= val && v > val) || (pv >= val && v < val) {
-					px[i][j].hits = append(px[i][j].hits, colC)
-					px[i][j].types = append(px[i][j].types, 0)
+		for ii := 0; ii < x; ii++ {
+			go func(ch chan struct{}, i int) {
+				for j := 1; j < y; j++ {
+					pv := sel(data[i][j-1])
+					v := sel(data[i][j])
+					if (pv <= val && v > val) || (pv >= val && v < val) {
+						px[i][j].hits = append(px[i][j].hits, colC)
+						px[i][j].types = append(px[i][j].types, 0)
+					}
 				}
+				ch <- struct{}{}
+			}(ch, ii)
+			n++
+			if n == thrN {
+				<-ch
+				n--
 			}
 		}
-		for j := 0; j < y; j++ {
-			for i := 1; i < x; i++ {
-				pv := sel(data[i-1][j])
-				v := sel(data[i][j])
-				if (pv <= val && v > val) || (pv >= val && v < val) {
-					px[i][j].hits = append(px[i][j].hits, colC)
-					px[i][j].types = append(px[i][j].types, 0)
+		for n > 0 {
+			<-ch
+			n--
+		}
+		for jj := 0; jj < y; jj++ {
+			go func(ch chan struct{}, j int) {
+				for i := 1; i < x; i++ {
+					pv := sel(data[i-1][j])
+					v := sel(data[i][j])
+					if (pv <= val && v > val) || (pv >= val && v < val) {
+						px[i][j].hits = append(px[i][j].hits, colC)
+						px[i][j].types = append(px[i][j].types, 0)
+					}
 				}
+				ch <- struct{}{}
+			}(ch, jj)
+			n++
+			if n == thrN {
+				<-ch
+				n--
 			}
+		}
+		for n > 0 {
+			<-ch
+			n--
 		}
 		return
 	}
@@ -336,71 +362,107 @@ func calculateHits(px pixRect, data complexRect, lh bool, x, y int, val float64,
 	m1 := make([]int, x*y)
 	m2 := make([]int, x*y)
 
-	for i := 0; i < x; i++ {
-		iy := i * y
-		for j := 1; j < y; j++ {
-			arg := iy + j
-			pv := sel(data[i][j-1])
-			v := sel(data[i][j])
-			if (pv <= val && v > val) || (pv >= val && v < val) {
-				m1[arg] = 0
-			} else if pv <= val && v <= val {
-				m1[arg] = -1
-			} else if pv >= val && v >= v {
-				m1[arg] = 1
-			} else {
-				m1[arg] = -2
+	for ii := 0; ii < x; ii++ {
+		iiy := ii * y
+		go func(ch chan struct{}, i, iy int) {
+			for j := 1; j < y; j++ {
+				arg := iy + j
+				pv := sel(data[i][j-1])
+				v := sel(data[i][j])
+				if (pv <= val && v > val) || (pv >= val && v < val) {
+					m1[arg] = 0
+				} else if pv <= val && v <= val {
+					m1[arg] = -1
+				} else if pv >= val && v >= v {
+					m1[arg] = 1
+				} else {
+					m1[arg] = -2
+				}
 			}
+			ch <- struct{}{}
+		}(ch, ii, iiy)
+		n++
+		if n == thrN {
+			<-ch
+			n--
 		}
 	}
-	for j := 0; j < y; j++ {
-		for i := 1; i < x; i++ {
-			arg := i*y + j
-			pv := sel(data[i-1][j])
-			v := sel(data[i][j])
-			if (pv <= val && v > val) || (pv >= val && v < val) {
-				m2[arg] = 0
-			} else if pv <= val && v <= val {
-				m2[arg] = -1
-			} else if pv >= val && v >= v {
-				m2[arg] = 1
-			} else {
-				m2[arg] = -2
+	for n > 0 {
+		<-ch
+		n--
+	}
+	for jj := 0; jj < y; jj++ {
+		go func(ch chan struct{}, j int) {
+			for i := 1; i < x; i++ {
+				arg := i*y + j
+				pv := sel(data[i-1][j])
+				v := sel(data[i][j])
+				if (pv <= val && v > val) || (pv >= val && v < val) {
+					m2[arg] = 0
+				} else if pv <= val && v <= val {
+					m2[arg] = -1
+				} else if pv >= val && v >= v {
+					m2[arg] = 1
+				} else {
+					m2[arg] = -2
+				}
 			}
+			ch <- struct{}{}
+		}(ch, jj)
+		n++
+		if n == thrN {
+			<-ch
+			n--
 		}
+	}
+	for n > 0 {
+		<-ch
+		n--
 	}
 	ca := colC.A
 	la := colL.A
 	ha := colH.A
 	ua := colU.A
-	for i := 0; i < x; i++ {
-		iy := i * y
-		for j := 1; j < y; j++ {
-			arg := iy + j
-			v1 := m1[arg]
-			v2 := m2[arg]
-			if v1 == 0 || v2 == 0 {
-				if ca != 0 {
-					px[i][j].hits = append(px[i][j].hits, colC)
-					px[i][j].types = append(px[i][j].types, 0)
-				}
-			} else if v1 == -1 && v2 == -1 {
-				if la != 0 {
-					px[i][j].hits = append(px[i][j].hits, colL)
-					px[i][j].types = append(px[i][j].types, -1)
-				}
-			} else if v1 == 1 && v2 == 1 {
-				if ha != 0 {
-					px[i][j].hits = append(px[i][j].hits, colH)
-					px[i][j].types = append(px[i][j].types, 1)
-				}
-			} else {
-				if ua != 0 {
-					px[i][j].hits = append(px[i][j].hits, colU)
-					px[i][j].types = append(px[i][j].types, -2)
+	for ii := 0; ii < x; ii++ {
+		iiy := ii * y
+		go func(ch chan struct{}, i, iy int) {
+			for j := 1; j < y; j++ {
+				arg := iy + j
+				v1 := m1[arg]
+				v2 := m2[arg]
+				if v1 == 0 || v2 == 0 {
+					if ca != 0 {
+						px[i][j].hits = append(px[i][j].hits, colC)
+						px[i][j].types = append(px[i][j].types, 0)
+					}
+				} else if v1 == -1 && v2 == -1 {
+					if la != 0 {
+						px[i][j].hits = append(px[i][j].hits, colL)
+						px[i][j].types = append(px[i][j].types, -1)
+					}
+				} else if v1 == 1 && v2 == 1 {
+					if ha != 0 {
+						px[i][j].hits = append(px[i][j].hits, colH)
+						px[i][j].types = append(px[i][j].types, 1)
+					}
+				} else {
+					if ua != 0 {
+						px[i][j].hits = append(px[i][j].hits, colU)
+						px[i][j].types = append(px[i][j].types, -2)
+					}
 				}
 			}
+			ch <- struct{}{}
+		}(ch, ii, iiy)
+		n++
+		if n == thrN {
+			<-ch
+			n--
 		}
+	}
+	for n > 0 {
+		<-ch
+		n--
 	}
 }
 
@@ -840,9 +902,9 @@ func cmap(ofn, f string) error {
 				}
 				v := real(fz)
 				if item.fz {
-					calculateHits(px, data, item.lh, x, y, v, item.rim, c, ccL, ccH, cc)
+					calculateHits(px, data, thrN, item.lh, x, y, v, item.rim, c, ccL, ccH, cc)
 				} else {
-					calculateHits(px, complexPlane, item.lh, x, y, v, item.rim, c, ccL, ccH, cc)
+					calculateHits(px, complexPlane, thrN, item.lh, x, y, v, item.rim, c, ccL, ccH, cc)
 				}
 			}
 			target := image.NewRGBA(image.Rect(0, 0, x, y))
@@ -914,7 +976,7 @@ func cmap(ofn, f string) error {
 		if lh {
 			ccL, ccH = colorLoHi(c)
 		}
-		calculateHits(px, data, lh, x, y, v, "r", c, ccL, ccH, cc)
+		calculateHits(px, data, thrN, lh, x, y, v, "r", c, ccL, ccH, cc)
 		if k == 0xff {
 			last = true
 		}
@@ -925,7 +987,7 @@ func cmap(ofn, f string) error {
 		if lh {
 			ccL, ccH = colorLoHi(c)
 		}
-		calculateHits(px, data, lh, x, y, maxr, "r", c, ccL, ccH, cc)
+		calculateHits(px, data, thrN, lh, x, y, maxr, "r", c, ccL, ccH, cc)
 	}
 
 	// Imag hits
@@ -936,7 +998,7 @@ func cmap(ofn, f string) error {
 		if lh {
 			ccL, ccH = colorLoHi(c)
 		}
-		calculateHits(px, data, lh, x, y, v, "i", c, ccL, ccH, cc)
+		calculateHits(px, data, thrN, lh, x, y, v, "i", c, ccL, ccH, cc)
 		if k == 0xff {
 			last = true
 		}
@@ -947,7 +1009,7 @@ func cmap(ofn, f string) error {
 		if lh {
 			ccL, ccH = colorLoHi(c)
 		}
-		calculateHits(px, data, lh, x, y, maxi, "i", c, ccL, ccH, cc)
+		calculateHits(px, data, thrN, lh, x, y, maxi, "i", c, ccL, ccH, cc)
 	}
 
 	// Modulo/Abs hits
@@ -958,7 +1020,7 @@ func cmap(ofn, f string) error {
 		if lh {
 			ccL, ccH = colorLoHi(c)
 		}
-		calculateHits(px, data, lh, x, y, v, "m", c, ccL, ccH, cc)
+		calculateHits(px, data, thrN, lh, x, y, v, "m", c, ccL, ccH, cc)
 		if k == 0xff {
 			last = true
 		}
@@ -969,7 +1031,7 @@ func cmap(ofn, f string) error {
 		if lh {
 			ccL, ccH = colorLoHi(c)
 		}
-		calculateHits(px, data, lh, x, y, maxm, "m", c, ccL, ccH, cc)
+		calculateHits(px, data, thrN, lh, x, y, maxm, "m", c, ccL, ccH, cc)
 	}
 
 	// Function 0's Re, IM, Modulo
@@ -980,17 +1042,17 @@ func cmap(ofn, f string) error {
 	if lh {
 		ccL, ccH = colorLoHi(c)
 	}
-	calculateHits(px, data, lh, x, y, 0.0, "r", c, ccL, ccH, cc)
+	calculateHits(px, data, thrN, lh, x, y, 0.0, "r", c, ccL, ccH, cc)
 	c = color.RGBA{uint8(0), uint8(0), uint8(0x80), 0xff}
 	if lh {
 		ccL, ccH = colorLoHi(c)
 	}
-	calculateHits(px, data, lh, x, y, 0.0, "i", c, ccL, ccH, cc)
+	calculateHits(px, data, thrN, lh, x, y, 0.0, "i", c, ccL, ccH, cc)
 	c = color.RGBA{uint8(0), uint8(0x80), uint8(0), 0xff}
 	if lh {
 		ccL, ccH = colorLoHi(c)
 	}
-	calculateHits(px, data, lh, x, y, 0.0, "m", c, ccL, ccH, cc)
+	calculateHits(px, data, thrN, lh, x, y, 0.0, "m", c, ccL, ccH, cc)
 
 	// Complex plane axes and unit circle
 	// Re = 0 and Im = 0 black
@@ -998,18 +1060,18 @@ func cmap(ofn, f string) error {
 	if lh {
 		ccL, ccH = colorLoHi(c)
 	}
-	calculateHits(px, complexPlane, lh, x, y, 0.0, "r", c, ccL, ccH, cc)
+	calculateHits(px, complexPlane, thrN, lh, x, y, 0.0, "r", c, ccL, ccH, cc)
 	c = color.RGBA{uint8(0), uint8(0), uint8(0), 0xff}
 	if lh {
 		ccL, ccH = colorLoHi(c)
 	}
-	calculateHits(px, complexPlane, lh, x, y, 0.0, "i", c, ccL, ccH, cc)
+	calculateHits(px, complexPlane, thrN, lh, x, y, 0.0, "i", c, ccL, ccH, cc)
 	// Modulo unit circle white
 	c = color.RGBA{uint8(0), uint8(0), uint8(0), 0xff}
 	if lh {
 		ccL, ccH = colorLoHi(c)
 	}
-	calculateHits(px, complexPlane, lh, x, y, 1.0, "m", c, ccL, ccH, cc)
+	calculateHits(px, complexPlane, thrN, lh, x, y, 1.0, "m", c, ccL, ccH, cc)
 
 	// debug: fmt.Printf("Hits\n%s\n", px.str(x, y))
 
