@@ -17,7 +17,7 @@ STRIP=strip
 C_LIBS=libjpegbw.so libbyname.so libtet.so
 C_ENV=
 C_LINK=-lm -ldl
-C_FILES=jpegbw.h jpegbw.c byname.h byname.c tet.h tet.cpp
+C_FILES=jpegbw.h jpegbw.c byname.h byname.c tet.h tet.cpp util.h util.c
 C_FLAGS=-Wall -ansi -pedantic -fPIC -shared -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion
 C_TEST=-Wall -ansi -pedantic -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion
 GCC=gcc
@@ -36,14 +36,14 @@ jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS} ${GO_LIB_FILES}
 f: cmd/f/f.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o f cmd/f/f.go
 
-libjpegbw.so: jpegbw.c jpegbw.h
-	${C_ENV} ${GCC} ${C_FLAGS} -o libjpegbw.so jpegbw.c ${C_LINK}
+libjpegbw.so: jpegbw.c jpegbw.h util.h util.c
+	${C_ENV} ${GCC} ${C_FLAGS} -o libjpegbw.so jpegbw.c util.c ${C_LINK}
 
-libbyname.so: byname.c byname.h
-	${C_ENV} ${GCC} ${C_FLAGS} -o libbyname.so byname.c ${C_LINK}
+libbyname.so: byname.c byname.h util.h util.c
+	${C_ENV} ${GCC} ${C_FLAGS} -o libbyname.so byname.c util.c ${C_LINK}
 
-libtet.so: tet.c tet.h
-	${C_ENV} ${GCC} ${C_FLAGS} -o libtet.so tet.c ${C_LINK}
+libtet.so: tet.c tet.h util.h util.c
+	${C_ENV} ${GCC} ${C_FLAGS} -o libtet.so tet.c util.c ${C_LINK}
 
 fmt: ${GO_BIN_FILES} ${GO_LIB_FILES}
 	./for_each_go_file.sh "${GO_FMT}"

@@ -1,9 +1,4 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <math.h>
-#include <complex.h>
-#include <dlfcn.h>
+#include "util.h"
 
 double complex byname(char* fname, double complex arg, int* res);
 double complex byname2(char* fname, double complex arg1, double complex arg2, int* res);
