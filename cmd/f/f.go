@@ -77,11 +77,15 @@ func fCall(f string, za []string) error {
 		}
 	}
 	l := len(s)
-	s = s[:l-2]
+	if len(za) > 0 {
+		s = s[:l-2]
+	}
 	s += ") = "
 	s += fmt.Sprintf("%v+%vi", real(fz), imag(fz))
 	l2 := len(s2)
-	s2 = s2[:l2-2]
+	if len(za) > 0 {
+		s2 = s2[:l2-2]
+	}
 	s2 += ")| = "
 	s2 += fmt.Sprintf("%v", cmplx.Abs(fz))
 	fmt.Printf("%s\n%s\n", s, s2)
@@ -89,7 +93,7 @@ func fCall(f string, za []string) error {
 }
 
 func main() {
-	if len(os.Args) >= 3 {
+	if len(os.Args) >= 2 {
 		err := fCall(os.Args[1], os.Args[2:])
 		if err != nil {
 			fmt.Printf("%v\n", err)
