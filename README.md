@@ -97,3 +97,9 @@ Time: 22.294628s
   - h in `hexp(z, h)` is complex, so you can make i-iterate of exp(z) via: `hexp(z, _1)`.
 - `tettest` function calls C `exit` internally, it is supposed to be called once with 4 args to call various combinations of all functions mentioned above.
 - All those functions can be used to generate contour charts of tetration, super log, half iterate exp etc.
+
+# 'f' program
+
+- Can be used to compute up to 4 args complex function
+- You must provide 2 to 5 args: function def and 1-4 arguments
+- Example: `LIB="./libtet.so" ./f 'csin(x1)*ccos(x2)*cpow(x3, x4)' 1 -2 _3 -_4`
