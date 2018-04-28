@@ -882,7 +882,7 @@ func cmap(ofn, f string) error {
 				// Add GIF frame
 				bounds := target.Bounds()
 				palettedImage := image.NewPaletted(bounds, nil)
-				quantizer := gogif.MedianCutQuantizer{NumColor: 64}
+				quantizer := gogif.MedianCutQuantizer{NumColor: 0x10000}
 				quantizer.Quantize(palettedImage, bounds, target, image.ZP)
 				images = append(images, palettedImage)
 				delays = append(delays, 0)
