@@ -4,7 +4,7 @@
 static double complex Zo = 0.31813150520476413   + 1.3372357014306895   * I;
 static double complex Zc = 0.31813150520476413   - 1.3372357014306895   * I;
 
-double DE[128] = {
+double DEA[128] = {
     1.4192252155045112363
 	,-0.05213258059503801667
 	, 0.00693219127232187586
@@ -310,10 +310,10 @@ double complex slo(double complex z1) {
     z /= 2.0;
     s = 0.0;
     for (k = K - 1; k > 0; k --) {
-      s += DE[k];
+      s += DEA[k];
       s *= z;
     }
-    s += DE[0];
+    s += DEA[0];
     s += clog(z1 - Zo) / Zo + clog(z1 - Zc) / Zc;
     return s;
 }
@@ -459,7 +459,7 @@ double complex tettest(double complex z1, double complex z2, double complex hi1,
   h3 = hexp(z1, hi2);
   h4 = hexp(z2, hi1);
   printf("tet(%f + %fi) = %f + %fi\n", creal(z1), cimag(z1), creal(t1), cimag(t1));
-  printf("tet(%f + %fi) = %f + %fi\n", creal(z1), cimag(z1), creal(t1), cimag(t1));
+  printf("tet(%f + %fi) = %f + %fi\n", creal(z2), cimag(z2), creal(t2), cimag(t2));
   printf("tet(%f + %fi) = %f + %fi\n", creal(hi1), cimag(hi1), creal(t3), cimag(t3));
   printf("tet(%f + %fi) = %f + %fi\n", creal(hi2), cimag(hi2), creal(t4), cimag(t4));
   printf("ate(%f + %fi) = %f + %fi\n", creal(z1), cimag(z1), creal(a1), cimag(a1));

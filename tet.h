@@ -3,6 +3,10 @@
 #include <math.h>
 #include <complex.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 double complex slo(double complex);
 double complex ate(double complex);
 double complex fimai(double complex);

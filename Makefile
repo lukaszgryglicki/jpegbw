@@ -18,7 +18,7 @@ C_LIBS=libjpegbw.so libbyname.so libtet.so
 C_ENV=
 C_LINK=-lm -ldl
 C_FILES=jpegbw.h jpegbw.c byname.h byname.c tet.h tet.cpp
-C_FLAGS=-Wall -ansi -pedantic -shared -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion
+C_FLAGS=-Wall -ansi -pedantic -fPIC -shared -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion
 C_TEST=-Wall -ansi -pedantic -O3 -ffast-math -Wstrict-prototypes -Wmissing-prototypes -Wshadow -Wconversion
 GCC=gcc
 
