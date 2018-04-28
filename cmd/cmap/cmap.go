@@ -307,49 +307,44 @@ func calculateHits(px pixRect, data complexRect, thrN int, lh bool, x, y int, va
 	} else {
 		return
 	}
-	n := 0
 	ch := make(chan struct{})
 
 	if !lh {
-		for ii := 0; ii < x; ii++ {
-			go func(ch chan struct{}, i int) {
-				for j := 1; j < y; j++ {
-					pv := sel(data[i][j-1])
-					v := sel(data[i][j])
-					if (pv <= val && v > val) || (pv >= val && v < val) {
-						px[i][j].hits = append(px[i][j].hits, colC)
-						px[i][j].types = append(px[i][j].types, 0)
+		n := thrN
+		for tt := 0; tt < n; tt++ {
+			go func(ch chan struct{}, t, tn int) {
+				for i := t; i < x; i += tn {
+					for j := 1; j < y; j++ {
+						pv := sel(data[i][j-1])
+						v := sel(data[i][j])
+						if (pv <= val && v > val) || (pv >= val && v < val) {
+							px[i][j].hits = append(px[i][j].hits, colC)
+							px[i][j].types = append(px[i][j].types, 0)
+						}
 					}
 				}
 				ch <- struct{}{}
-			}(ch, ii)
-			n++
-			if n == thrN {
-				<-ch
-				n--
-			}
+			}(ch, tt, thrN)
 		}
 		for n > 0 {
 			<-ch
 			n--
 		}
-		for jj := 0; jj < y; jj++ {
-			go func(ch chan struct{}, j int) {
-				for i := 1; i < x; i++ {
-					pv := sel(data[i-1][j])
-					v := sel(data[i][j])
-					if (pv <= val && v > val) || (pv >= val && v < val) {
-						px[i][j].hits = append(px[i][j].hits, colC)
-						px[i][j].types = append(px[i][j].types, 0)
+		n = thrN
+		for tt := 0; tt < n; tt++ {
+			go func(ch chan struct{}, t, tn int) {
+				for j := t; j < y; j += tn {
+					for i := 1; i < x; i++ {
+						pv := sel(data[i-1][j])
+						v := sel(data[i][j])
+						if (pv <= val && v > val) || (pv >= val && v < val) {
+							px[i][j].hits = append(px[i][j].hits, colC)
+							px[i][j].types = append(px[i][j].types, 0)
+						}
 					}
 				}
 				ch <- struct{}{}
-			}(ch, jj)
-			n++
-			if n == thrN {
-				<-ch
-				n--
-			}
+			}(ch, tt, thrN)
 		}
 		for n > 0 {
 			<-ch
@@ -362,103 +357,99 @@ func calculateHits(px pixRect, data complexRect, thrN int, lh bool, x, y int, va
 	m1 := make([]int, x*y)
 	m2 := make([]int, x*y)
 
-	for ii := 0; ii < x; ii++ {
-		iiy := ii * y
-		go func(ch chan struct{}, i, iy int) {
-			for j := 1; j < y; j++ {
-				arg := iy + j
-				pv := sel(data[i][j-1])
-				v := sel(data[i][j])
-				if (pv <= val && v > val) || (pv >= val && v < val) {
-					m1[arg] = 0
-				} else if pv <= val && v <= val {
-					m1[arg] = -1
-				} else if pv >= val && v >= v {
-					m1[arg] = 1
-				} else {
-					m1[arg] = -2
+	n := thrN
+	for tt := 0; tt < n; tt++ {
+		go func(ch chan struct{}, t, tn int) {
+			for i := t; i < x; i += tn {
+				iy := i * y
+				for j := 1; j < y; j++ {
+					arg := iy + j
+					pv := sel(data[i][j-1])
+					v := sel(data[i][j])
+					if (pv <= val && v > val) || (pv >= val && v < val) {
+						m1[arg] = 0
+					} else if pv <= val && v <= val {
+						m1[arg] = -1
+					} else if pv >= val && v >= v {
+						m1[arg] = 1
+					} else {
+						m1[arg] = -2
+					}
 				}
 			}
 			ch <- struct{}{}
-		}(ch, ii, iiy)
-		n++
-		if n == thrN {
-			<-ch
-			n--
-		}
+		}(ch, tt, thrN)
 	}
 	for n > 0 {
 		<-ch
 		n--
 	}
-	for jj := 0; jj < y; jj++ {
-		go func(ch chan struct{}, j int) {
-			for i := 1; i < x; i++ {
-				arg := i*y + j
-				pv := sel(data[i-1][j])
-				v := sel(data[i][j])
-				if (pv <= val && v > val) || (pv >= val && v < val) {
-					m2[arg] = 0
-				} else if pv <= val && v <= val {
-					m2[arg] = -1
-				} else if pv >= val && v >= v {
-					m2[arg] = 1
-				} else {
-					m2[arg] = -2
+
+	n = thrN
+	for tt := 0; tt < n; tt++ {
+		go func(ch chan struct{}, t, tn int) {
+			for j := t; j < y; j += tn {
+				for i := 1; i < x; i++ {
+					arg := i*y + j
+					pv := sel(data[i-1][j])
+					v := sel(data[i][j])
+					if (pv <= val && v > val) || (pv >= val && v < val) {
+						m2[arg] = 0
+					} else if pv <= val && v <= val {
+						m2[arg] = -1
+					} else if pv >= val && v >= v {
+						m2[arg] = 1
+					} else {
+						m2[arg] = -2
+					}
 				}
 			}
 			ch <- struct{}{}
-		}(ch, jj)
-		n++
-		if n == thrN {
-			<-ch
-			n--
-		}
+		}(ch, tt, thrN)
 	}
 	for n > 0 {
 		<-ch
 		n--
 	}
+
 	ca := colC.A
 	la := colL.A
 	ha := colH.A
 	ua := colU.A
-	for ii := 0; ii < x; ii++ {
-		iiy := ii * y
-		go func(ch chan struct{}, i, iy int) {
-			for j := 1; j < y; j++ {
-				arg := iy + j
-				v1 := m1[arg]
-				v2 := m2[arg]
-				if v1 == 0 || v2 == 0 {
-					if ca != 0 {
-						px[i][j].hits = append(px[i][j].hits, colC)
-						px[i][j].types = append(px[i][j].types, 0)
-					}
-				} else if v1 == -1 && v2 == -1 {
-					if la != 0 {
-						px[i][j].hits = append(px[i][j].hits, colL)
-						px[i][j].types = append(px[i][j].types, -1)
-					}
-				} else if v1 == 1 && v2 == 1 {
-					if ha != 0 {
-						px[i][j].hits = append(px[i][j].hits, colH)
-						px[i][j].types = append(px[i][j].types, 1)
-					}
-				} else {
-					if ua != 0 {
-						px[i][j].hits = append(px[i][j].hits, colU)
-						px[i][j].types = append(px[i][j].types, -2)
+	n = thrN
+	for tt := 0; tt < n; tt++ {
+		go func(ch chan struct{}, t, tn int) {
+			for i := t; i < x; i += tn {
+				iy := i * y
+				for j := 1; j < y; j++ {
+					arg := iy + j
+					v1 := m1[arg]
+					v2 := m2[arg]
+					if v1 == 0 || v2 == 0 {
+						if ca != 0 {
+							px[i][j].hits = append(px[i][j].hits, colC)
+							px[i][j].types = append(px[i][j].types, 0)
+						}
+					} else if v1 == -1 && v2 == -1 {
+						if la != 0 {
+							px[i][j].hits = append(px[i][j].hits, colL)
+							px[i][j].types = append(px[i][j].types, -1)
+						}
+					} else if v1 == 1 && v2 == 1 {
+						if ha != 0 {
+							px[i][j].hits = append(px[i][j].hits, colH)
+							px[i][j].types = append(px[i][j].types, 1)
+						}
+					} else {
+						if ua != 0 {
+							px[i][j].hits = append(px[i][j].hits, colU)
+							px[i][j].types = append(px[i][j].types, -2)
+						}
 					}
 				}
 			}
 			ch <- struct{}{}
-		}(ch, ii, iiy)
-		n++
-		if n == thrN {
-			<-ch
-			n--
-		}
+		}(ch, tt, thrN)
 	}
 	for n > 0 {
 		<-ch
@@ -634,6 +625,9 @@ func cmap(ofn, f string) error {
 		t, err := strconv.Atoi(thrsS)
 		if err != nil {
 			return err
+		}
+		if t <= 0 {
+			return fmt.Errorf("N must be positive, got %d", t)
 		}
 		thrs = t
 	}
@@ -1206,8 +1200,8 @@ actual color can change by +1 after 40 steps or 1 step, it depends, format "ri:g
 Example final definition:
   "100|fz;r;0.5;255:0:0:255;-0.01;-0.005:0:0:0|fz;i;0.5;0:0:255:255;-0.01;0:0:-0.005:0|fz;m;1;0:255:0:255;-0.01;0:-0.005:0:0"
 Example test call:
-  LIB="libtet.so" U="11|fz;r;-1;255:0:0:255;x1+2*x2;0:0:0:0;1" ./cmap out.gif "x1"
-  LIB="libtet.so" U="1|z;r;0;255:0:0:255;x1;0:0:0:0;1|z;i;0;0:0:255:255;x1;0:0:0:0;1|z;m;1;0:255:0:255;x1;0:0:0:0;1" ./cmap out.gif "x1"
+  LIB="./libtet.so" U="11|fz;r;-1;255:0:0:255;x1+2*x2;0:0:0:0;1" ./cmap out.gif "x1"
+  LIB="./libtet.so" U="1|z;r;0;255:0:0:255;x1;0:0:0:0;1|z;i;0;0:0:255:255;x1;0:0:0:0;1|z;m;1;0:255:0:255;x1;0:0:0:0;1" ./cmap out.gif "x1"
 `
 		fmt.Printf("%s\n", helpStr)
 	}
