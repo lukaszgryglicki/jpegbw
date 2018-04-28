@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"jpegbw"
+	"math/cmplx"
 	"os"
 	"strconv"
 )
@@ -66,9 +67,11 @@ func fCall(f string, za []string) error {
 	}
 	fz, err := fzc.FparF(zar[:])
 	s := "f("
+	s2 := "|'" + f + "'("
 	for i := 0; i < 4; i++ {
 		if len(za) > i {
 			s += fmt.Sprintf("%v+%vi, ", real(zar[i]), imag(zar[i]))
+			s2 += za[i] + ", "
 		} else {
 			break
 		}
@@ -77,7 +80,11 @@ func fCall(f string, za []string) error {
 	s = s[:l-2]
 	s += ") = "
 	s += fmt.Sprintf("%v+%vi", real(fz), imag(fz))
-	fmt.Printf("%s\n", s)
+	l2 := len(s2)
+	s2 = s2[:l2-2]
+	s2 += ")| = "
+	s2 += fmt.Sprintf("%v", cmplx.Abs(fz))
+	fmt.Printf("%s\n%s\n", s, s2)
 	return err
 }
 

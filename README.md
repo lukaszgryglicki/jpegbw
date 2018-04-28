@@ -103,3 +103,8 @@ Time: 22.294628s
 - Can be used to compute up to 4 args complex function
 - You must provide 2 to 5 args: function def and 1-4 arguments
 - Example: `LIB="./libtet.so" ./f 'csin(x1)*ccos(x2)*cpow(x3, x4)' 1 -2 _3 -_4`
+- Other example (simplest): `./f 'x1+x2' 3 _4` produces:
+```
+f(3+0i, 0+4i) = 3+4i
+|'x1+x2'(3, _4)| = 5
+```
