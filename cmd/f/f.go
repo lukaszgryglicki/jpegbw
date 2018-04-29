@@ -68,10 +68,12 @@ func fCall(f string, za []string) error {
 	fz, err := fzc.FparF(zar[:])
 	s := "f("
 	s2 := "|'" + f + "'("
+	csvr := ""
 	for i := 0; i < 4; i++ {
 		if len(za) > i {
 			s += fmt.Sprintf("%v+%vi, ", real(zar[i]), imag(zar[i]))
 			s2 += za[i] + ", "
+			csvr += fmt.Sprintf("%v,%v,%v,", real(zar[i]), imag(zar[i]), cmplx.Abs(zar[i]))
 		} else {
 			break
 		}
@@ -89,6 +91,8 @@ func fCall(f string, za []string) error {
 	s2 += ")| = "
 	s2 += fmt.Sprintf("%v", cmplx.Abs(fz))
 	fmt.Printf("%s\n%s\n", s, s2)
+	csvr += fmt.Sprintf("%v,%v,%v\n", real(fz), imag(fz), cmplx.Abs(fz))
+	fmt.Fprintf(os.Stderr, csvr)
 	return err
 }
 
