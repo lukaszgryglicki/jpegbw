@@ -12,7 +12,7 @@ GO_CONST=goconst
 GO_IMPORTS=goimports -w
 GO_USEDEXPORTS=usedexports
 GO_ERRCHECK=errcheck -asserts -ignore '[FS]?[Pp]rint*'
-BINARIES=jpegbw gengo cmap f
+BINARIES=jpegbw gengo cmap f plot
 STRIP=strip
 C_LIBS=libjpegbw.so libbyname.so libtet.so
 C_ENV=
@@ -29,6 +29,9 @@ gengo: cmd/gengo/gengo.go
 
 cmap: cmd/cmap/cmap.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o cmap cmd/cmap/cmap.go
+
+plot: cmd/plot/plot.go ${C_LIBS} ${GO_LIB_FILES}
+	${GO_ENV} ${GO_BUILD} -o plot cmd/plot/plot.go
 
 jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
