@@ -19,6 +19,7 @@
 /cmap
 /f
 /plot
+/jpeg
 
 # JPEGs
 *.jp*g

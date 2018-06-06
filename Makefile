@@ -1,6 +1,6 @@
-GO_BIN_FILES=cmd/jpegbw/jpegbw.go cmd/gengo/gengo.go cmd/cmap/cmap.go cmd/f/f.go
+GO_BIN_FILES=cmd/jpegbw/jpegbw.go cmd/gengo/gengo.go cmd/cmap/cmap.go cmd/f/f.go cmd/jpeg/jpeg.go
 GO_LIB_FILES=fpar.go
-GO_BIN_CMDS=jpegbw/cmd/jpegbw jpegbw/cmd/gengo jpegbw/cmd/cmap jpegbw/cmd/f
+GO_BIN_CMDS=jpegbw/cmd/jpegbw jpegbw/cmd/gengo jpegbw/cmd/cmap jpegbw/cmd/f jpegbw/cmd/jpeg
 GO_ENV=CGO_ENABLED=1
 GO_BUILD=go build -ldflags '-s -w'
 #GO_BUILD=go build -ldflags '-s -w' -race
@@ -12,7 +12,7 @@ GO_CONST=goconst
 GO_IMPORTS=goimports -w
 GO_USEDEXPORTS=usedexports
 GO_ERRCHECK=errcheck -asserts -ignore '[FS]?[Pp]rint*'
-BINARIES=jpegbw gengo cmap f plot
+BINARIES=jpegbw gengo cmap f plot jpeg
 STRIP=strip
 C_LIBS=libjpegbw.so libbyname.so libtet.so
 C_ENV=
@@ -35,6 +35,9 @@ plot: cmd/plot/plot.go ${C_LIBS} ${GO_LIB_FILES}
 
 jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
+
+jpeg: cmd/jpeg/jpeg.go ${C_LIBS} ${GO_LIB_FILES}
+	${GO_ENV} ${GO_BUILD} -o jpeg cmd/jpeg/jpeg.go
 
 f: cmd/f/f.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o f cmd/f/f.go
