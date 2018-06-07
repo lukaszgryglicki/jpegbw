@@ -114,8 +114,13 @@ func images2RGBA(args []string) error {
 		agaB    [4]bool
 	)
 
+	noA := os.Getenv("NA") != ""
+
 	// Process colors
 	for colidx, colrgba := range rgba {
+		if noA && colidx == 3 {
+			continue
+		}
 		fun := os.Getenv(colrgba + "F")
 		lib := ""
 		bFun[colidx] = false
@@ -305,6 +310,9 @@ func images2RGBA(args []string) error {
 			timeH time.Duration
 		)
 		for colidx, colrgba := range rgba {
+			if noA && colidx == 3 {
+				continue
+			}
 			r := ar[colidx]
 			g := ag[colidx]
 			b := ab[colidx]
@@ -493,14 +501,26 @@ func images2RGBA(args []string) error {
 		dtStartF := time.Now()
 		che := make(chan error)
 		nThreads := 0
-		for ii := 0; ii < x; ii++ {
-			go func(c chan error, i int) {
+		var fCalc func(chan error, int)
+		if noA {
+			fCalc = func(c chan error, i int) {
+				for j := 0; j < y; j++ {
+					px := pxdata[i][j]
+					target.Set(i, j, color.RGBA64{px[0], px[1], px[2], 0xffff})
+				}
+				c <- nil
+			}
+		} else {
+			fCalc = func(c chan error, i int) {
 				for j := 0; j < y; j++ {
 					px := pxdata[i][j]
 					target.Set(i, j, color.RGBA64{px[0], px[1], px[2], px[3]})
 				}
 				c <- nil
-			}(che, ii)
+			}
+		}
+		for ii := 0; ii < x; ii++ {
+			go fCalc(che, ii)
 			nThreads++
 			if nThreads == thrN {
 				e := <-che
@@ -593,6 +613,7 @@ func main() {
 Environment variables:
 This program manipulates 4 channels R, G, B, A.
 When you see X replace it with R, G, B or A.
+NA - skip alpha calculation, alpha will be 1 everywhere
 Q - jpeg quality 1-100, will use library default if not specified
 XR - relative red usage for generating gray pixel, 1 if not specified
 XG - relative green usage for generating gray pixel, 1 if not specified
