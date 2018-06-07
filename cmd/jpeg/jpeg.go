@@ -114,6 +114,30 @@ func images2RGBA(args []string) error {
 		agaB    [4]bool
 	)
 
+	// Main library context
+	var mfctx jpegbw.FparCtx
+	lib := os.Getenv("LIB")
+	if lib != "" {
+		nf := 128
+		nfs := os.Getenv("NF")
+		if nfs != "" {
+			v, err := strconv.Atoi(nfs)
+			if err != nil {
+				return err
+			}
+			if v < 1 || v > 0xffff {
+				return fmt.Errorf("NF must be from 1-65535 range")
+			}
+			nf = v
+		}
+		ok := mfctx.Init(lib, uint(nf))
+		if !ok {
+			return fmt.Errorf("LIB init failed for: %s", lib)
+		}
+		defer func() { mfctx.Tidy() }()
+	}
+
+	// No alpha processing
 	noA := os.Getenv("NA") != ""
 
 	// Process colors
@@ -122,29 +146,9 @@ func images2RGBA(args []string) error {
 			continue
 		}
 		fun := os.Getenv(colrgba + "F")
-		lib := ""
 		bFun[colidx] = false
 		if fun != "" {
-			lib = os.Getenv(colrgba + "LIB")
-			if lib != "" {
-				nf := 128
-				nfs := os.Getenv(colrgba + "NF")
-				if nfs != "" {
-					v, err := strconv.Atoi(nfs)
-					if err != nil {
-						return err
-					}
-					if v < 1 || v > 0xffff {
-						return fmt.Errorf("NF must be from 1-65535 range")
-					}
-					nf = v
-				}
-				ok := fctx[colidx].Init(lib, uint(nf))
-				if !ok {
-					return fmt.Errorf("LIB init failed for: %s", lib)
-				}
-				defer func() { fctx[colidx].Tidy() }()
-			}
+			fctx[colidx] = mfctx.Cpy()
 			err := fctx[colidx].FparFunction(fun)
 			if err != nil {
 				return err
@@ -292,8 +296,6 @@ func images2RGBA(args []string) error {
 		fmt.Printf(" (%d x %d)...", x, y)
 		_ = flush.Flush()
 
-		// Output
-		target := image.NewRGBA64(image.Rect(0, 0, x, y))
 		var pxdata [][][4]uint16
 		for i := 0; i < x; i++ {
 			pxdata = append(pxdata, [][4]uint16{})
@@ -498,6 +500,7 @@ func images2RGBA(args []string) error {
 		}
 
 		// Final write to target
+		target := image.NewRGBA64(image.Rect(0, 0, x, y))
 		dtStartF := time.Now()
 		che := make(chan error)
 		nThreads := 0
@@ -506,6 +509,9 @@ func images2RGBA(args []string) error {
 			fCalc = func(c chan error, i int) {
 				for j := 0; j < y; j++ {
 					px := pxdata[i][j]
+					//if i%100 == 0 && j%100 == 0 {
+					//	fmt.Printf("(%d,%d) --> %v\n", i, j, px)
+					//}
 					target.Set(i, j, color.RGBA64{px[0], px[1], px[2], 0xffff})
 				}
 				c <- nil
@@ -514,7 +520,13 @@ func images2RGBA(args []string) error {
 			fCalc = func(c chan error, i int) {
 				for j := 0; j < y; j++ {
 					px := pxdata[i][j]
-					target.Set(i, j, color.RGBA64{px[0], px[1], px[2], px[3]})
+					//if i%100 == 0 && j%100 == 0 {
+					//	fmt.Printf("(%d,%d) --> %v\n", i, j, px)
+					//}
+					//px[0] = uint16((uint32(px[0]) * uint32(px[3])) >> 0x10)
+					//px[1] = uint16((uint32(px[1]) * uint32(px[3])) >> 0x10)
+					//px[2] = uint16((uint32(px[2]) * uint32(px[3])) >> 0x10)
+					target.Set(i, j, color.NRGBA64{px[0], px[1], px[2], px[3]})
 				}
 				c <- nil
 			}
@@ -624,8 +636,8 @@ XLO - when calculating intensity range, discard values than are in this lower %,
 XHI - when calculating intensity range, discard values that are in this higher %, for example 3
 XGA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)->(x,pow(x, GA)) mapping
 XF - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
-XLIB - if F is used and F calls external functions, thery need to be loaded for this C library
-XNF - set maximum number of distinct functions in the parser, if not set, default 128 is used
+LIB - if F is used and F calls external functions, thery need to be loaded for this C library
+NF - set maximum number of distinct functions in the parser, if not set, default 128 is used
 XI - use imaginary part of fuction return value instead of real, use like I=1
 N - set number of CPUs to process data
 O - eventual overwite file name config, example: ".jpg:.png"
