@@ -29,3 +29,54 @@ double complex saturate(double complex arg, double complex lo, double complex hi
   if (rarg > rhi) return (double complex)rhiv;
   return (double complex)rarg;
 }
+
+double complex gsrainbowr(double complex arg) {
+  double x = creal(arg);
+  if (x > 0. && x < 1./7.) {
+    return (double complex)(x * 7.);
+  } else if (x >= 1./7. && x < 2./7.) {
+    return (double complex)((2./7. - x) * 7.);
+  } else if (x >= 2./7. && x < 4./7.) {
+    return (double complex)0.;
+  } else if (x >= 4./7. && x < 5./7.) {
+    return (double complex)((x - 4./7.) * 7.);
+  } else if (x >= 5./7. && x <= 1.) {
+    return (double complex)1.;
+  } else {
+    return (double complex)0.;
+  }
+}
+
+double complex gsrainbowg(double complex arg) {
+  double x = creal(arg);
+  if (x > 0. && x < 2./7.) {
+    return (double complex)0.;
+  } else if (x >= 2./7. && x < 3./7.) {
+    return (double complex)((x - 2./7.) * 7.);
+  } else if (x >= 3./7. && x < 5./7.) {
+    return (double complex)1.;
+  } else if (x >= 5./7. && x < 6./7.) {
+    return (double complex)((6./7. - x) * 7.);
+  } else if (x >= 6./7. && x <= 1.) {
+    return (double complex)((x - 6./7.) * 7.);
+  } else {
+    return (double complex)0.;
+  }
+}
+
+double complex gsrainbowb(double complex arg) {
+  double x = creal(arg);
+  if (x > 0. && x < 1./7.) {
+    return (double complex)(x * 7.);
+  } else if (x > 1./7. && x < 3./7.) {
+    return (double complex)1.;
+  } else if (x > 3./7. && x < 4./7.) {
+    return (double complex)((4./7. - x) * 7.);
+  } else if (x > 4./7. && x < 6./7.) {
+    return (double complex)0.;
+  } else if (x >= 6./7. && x <= 1.) {
+    return (double complex)((x - 6./7.) * 7.);
+  } else {
+    return (double complex)0.;
+  }
+}
