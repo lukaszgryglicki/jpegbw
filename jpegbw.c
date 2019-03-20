@@ -32,7 +32,7 @@ double complex saturate(double complex arg, double complex lo, double complex hi
 
 double complex gsrainbowr(double complex arg) {
   double x = creal(arg);
-  if (x > 0. && x < 1./7.) {
+  if (x >= 0. && x < 1./7.) {
     return (double complex)(x * 7.);
   } else if (x >= 1./7. && x < 2./7.) {
     return (double complex)((2./7. - x) * 7.);
@@ -49,7 +49,7 @@ double complex gsrainbowr(double complex arg) {
 
 double complex gsrainbowg(double complex arg) {
   double x = creal(arg);
-  if (x > 0. && x < 2./7.) {
+  if (x >= 0. && x < 2./7.) {
     return (double complex)0.;
   } else if (x >= 2./7. && x < 3./7.) {
     return (double complex)((x - 2./7.) * 7.);
@@ -66,7 +66,7 @@ double complex gsrainbowg(double complex arg) {
 
 double complex gsrainbowb(double complex arg) {
   double x = creal(arg);
-  if (x > 0. && x < 1./7.) {
+  if (x >= 0. && x < 1./7.) {
     return (double complex)(x * 7.);
   } else if (x > 1./7. && x < 3./7.) {
     return (double complex)1.;
@@ -76,6 +76,69 @@ double complex gsrainbowb(double complex arg) {
     return (double complex)0.;
   } else if (x >= 6./7. && x <= 1.) {
     return (double complex)((x - 6./7.) * 7.);
+  } else {
+    return (double complex)0.;
+  }
+}
+
+double complex gsrainbowre(double complex arg, double complex delta) {
+  double x = creal(arg);
+  double d = creal(delta);
+  double m = 1. / ((1./7.) - 2. * d);
+  if (x >= d && x < (1./7.) - d) {
+    return (double complex)((x - d) * m);
+  } else if (x >= (1./7.) - d && x < (1./7.) + d) {
+    return (double complex)1.;
+  } else if (x >= (1./7.) + d && x < (2./7.) - d) {
+    return (double complex)((2./7. - (x + d)) * m);
+  } else if (x >= (2./7.) - d && x < (4./7.) + d) {
+    return (double complex)0.;
+  } else if (x >= (4./7.) + d && x < (5./7.) - d) {
+    return (double complex)(((x - d) - 4./7.) * m);
+  } else if (x >= (5./7.) - d && x <= 1.) {
+    return (double complex)1.;
+  } else {
+    return (double complex)0.;
+  }
+}
+
+double complex gsrainbowge(double complex arg, double complex delta) {
+  double x = creal(arg);
+  double d = creal(delta);
+  double m = 1. / ((1./7.) - 2. * d);
+  if (x >= 0. && x < (2./7.) + d) {
+    return (double complex)0.;
+  } else if (x >= (2./7.) + d && x < (3./7.) - d) {
+    return (double complex)(((x - d) - 2./7.) * m);
+  } else if (x >= (3./7.) - d && x < (5./7.) + d) {
+    return (double complex)1.;
+  } else if (x >= (5./7.) + d && x < (6./7.) - d) {
+    return (double complex)((6./7. - (x + d)) * m);
+  } else if (x >= (6./7.) - d && x < (6./7.) + d) {
+    return (double complex)0.;
+  } else if (x >= (6./7.) + d && x <= 1. - d) {
+    return (double complex)(((x - d) - 6./7.) * m);
+  } else if (x >= 1. - d && x <= 1.) {
+    return (double complex)1.;
+  } else {
+    return (double complex)0.;
+  }
+}
+
+double complex gsrainbowbe(double complex arg, double complex delta) {
+  double x = creal(arg);
+  double d = creal(delta);
+  double m = 1. / ((1./7.) - 2. * d);
+  if (x >= d && x < (1./7.) - d) {
+    return (double complex)((x - d) * m);
+  } else if (x > (1./7.) - d && x < (3./7.) + d) {
+    return (double complex)1.;
+  } else if (x > (3./7.) + d && x < (4./7.) - d) {
+    return (double complex)((4./7. - (x + d)) * m);
+  } else if (x > (4./7.) - d && x < (6./7.) + d) {
+    return (double complex)0.;
+  } else if (x >= (6./7.) + d && x <= 1.) {
+    return (double complex)(((x - d) - 6./7.) * m);
   } else {
     return (double complex)0.;
   }

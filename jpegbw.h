@@ -8,3 +8,6 @@ double complex saturate(double complex arg, double complex lo, double complex hi
 double complex gsrainbowr(double complex arg);
 double complex gsrainbowg(double complex arg);
 double complex gsrainbowb(double complex arg);
+double complex gsrainbowre(double complex arg, double complex delta);
+double complex gsrainbowge(double complex arg, double complex delta);
+double complex gsrainbowbe(double complex arg, double complex delta);
