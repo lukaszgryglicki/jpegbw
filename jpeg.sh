@@ -1,0 +1,2 @@
+#!/bin/bash
+RR=1 RG=0 RB=0 GR=0 GG=1 GB=0 BR=0 BG=0 BB=1 RLO=1.5 RHI=1.5 GLO=1.5 GHI=1.5 BLO=1.5 BHI=1.5 NA=1 jpeg $*
