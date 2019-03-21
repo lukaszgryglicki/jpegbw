@@ -27,6 +27,11 @@ type FparCtx struct {
 	digits   map[string]struct{}
 	alphas   map[string]struct{}
 	cidents  map[string]*C.char
+	cacheLvl int
+	cacheL1  map[complex128]complex128
+	cacheL2  map[[2]complex128]complex128
+	cacheL3  map[[3]complex128]complex128
+	cacheL4  map[[4]complex128]complex128
 }
 
 // Cpy - copies one context to the another, it is partially shallow copy (we copy references to maps not maps)
@@ -45,6 +50,11 @@ func (ctx *FparCtx) Cpy() FparCtx {
 		digits:   ctx.digits,
 		alphas:   ctx.alphas,
 		cidents:  ctx.cidents,
+		cacheLvl: 0,
+		cacheL1:  nil,
+		cacheL2:  nil,
+		cacheL3:  nil,
+		cacheL4:  nil,
 	}
 }
 
@@ -54,6 +64,23 @@ func (ctx *FparCtx) Init(lib string, n uint) bool {
 	clib := C.CString(lib)
 	defer C.free(unsafe.Pointer(clib))
 	return C.init(clib, C.size_t(n)) == 1
+}
+
+// SetCache - sets N dimensional cache
+func (ctx *FparCtx) SetCache(n int) {
+	if n < 1 || n > 4 {
+		return
+	}
+	ctx.cacheLvl = n
+	if n == 1 {
+		ctx.cacheL1 = make(map[complex128]complex128)
+	} else if n == 2 {
+		ctx.cacheL2 = make(map[[2]complex128]complex128)
+	} else if n == 3 {
+		ctx.cacheL3 = make(map[[3]complex128]complex128)
+	} else {
+		ctx.cacheL4 = make(map[[4]complex128]complex128)
+	}
 }
 
 // Tidy - free memory, release context, deallocate insternal C structs
@@ -435,8 +462,45 @@ func (ctx *FparCtx) expression() complex128 {
 	}
 }
 
+// cacheHit - do we have current arg(s) in cache?
+func (ctx *FparCtx) cacheHit(args []complex128) (complex128, bool) {
+	var (
+		v  complex128
+		ok bool
+	)
+	if ctx.cacheL1 != nil {
+		v, ok = ctx.cacheL1[args[0]]
+	} else if ctx.cacheL2 != nil {
+		v, ok = ctx.cacheL2[[2]complex128{args[0], args[1]}]
+	} else if ctx.cacheL3 != nil {
+		v, ok = ctx.cacheL3[[3]complex128{args[0], args[1], args[2]}]
+	} else if ctx.cacheL4 != nil {
+		v, ok = ctx.cacheL4[[4]complex128{args[0], args[1], args[2], args[3]}]
+	}
+	return v, ok
+}
+
+// setCache - store value for cache
+func (ctx *FparCtx) setCache(args []complex128, v complex128) {
+	if ctx.cacheL1 != nil {
+		ctx.cacheL1[args[0]] = v
+	} else if ctx.cacheL2 != nil {
+		ctx.cacheL2[[2]complex128{args[0], args[1]}] = v
+	} else if ctx.cacheL3 != nil {
+		ctx.cacheL3[[3]complex128{args[0], args[1], args[2]}] = v
+	} else if ctx.cacheL4 != nil {
+		ctx.cacheL4[[4]complex128{args[0], args[1], args[2], args[3]}] = v
+	}
+}
+
 // FparF - call user defined function
 func (ctx *FparCtx) FparF(args []complex128) (complex128, error) {
+	if ctx.cacheLvl > 0 {
+		ce, hit := ctx.cacheHit(args)
+		if hit {
+			return ce, nil
+		}
+	}
 	ctx.err = nil
 	ctx.arg = args
 	ctx.position = 0
@@ -445,6 +509,9 @@ func (ctx *FparCtx) FparF(args []complex128) (complex128, error) {
 	e := ctx.expression()
 	if ctx.ch != ";" {
 		ctx.er(fmt.Errorf("FparF: garbage in function expression"))
+	}
+	if ctx.cacheLvl > 0 && ctx.err == nil {
+		ctx.setCache(args, e)
 	}
 	// info: fmt.Printf("FparF: position: %s f(%v) = %f\n", ctx.pos(), args, e)
 	return e, ctx.err
