@@ -636,6 +636,7 @@ func main() {
 		err := images2RGBA(os.Args[1:])
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
 		}
 	} else {
 		fmt.Printf("Please provide at least one image to convert\n")
