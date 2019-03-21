@@ -34,6 +34,50 @@ type FparCtx struct {
 	cacheL4  map[[4]complex128]complex128
 }
 
+func copyL1(i map[complex128]complex128) map[complex128]complex128 {
+	if i == nil {
+		return nil
+	}
+	o := make(map[complex128]complex128)
+	for k, v := range i {
+		o[k] = v
+	}
+	return o
+}
+
+func copyL2(i map[[2]complex128]complex128) map[[2]complex128]complex128 {
+	if i == nil {
+		return nil
+	}
+	o := make(map[[2]complex128]complex128)
+	for k, v := range i {
+		o[k] = v
+	}
+	return o
+}
+
+func copyL3(i map[[3]complex128]complex128) map[[3]complex128]complex128 {
+	if i == nil {
+		return nil
+	}
+	o := make(map[[3]complex128]complex128)
+	for k, v := range i {
+		o[k] = v
+	}
+	return o
+}
+
+func copyL4(i map[[4]complex128]complex128) map[[4]complex128]complex128 {
+	if i == nil {
+		return nil
+	}
+	o := make(map[[4]complex128]complex128)
+	for k, v := range i {
+		o[k] = v
+	}
+	return o
+}
+
 // Cpy - copies one context to the another, it is partially shallow copy (we copy references to maps not maps)
 func (ctx *FparCtx) Cpy() FparCtx {
 	// debug: fmt.Printf("copying context\n")
@@ -50,11 +94,11 @@ func (ctx *FparCtx) Cpy() FparCtx {
 		digits:   ctx.digits,
 		alphas:   ctx.alphas,
 		cidents:  ctx.cidents,
-		cacheLvl: 0,
-		cacheL1:  nil,
-		cacheL2:  nil,
-		cacheL3:  nil,
-		cacheL4:  nil,
+		cacheLvl: ctx.cacheLvl,
+		cacheL1:  copyL1(ctx.cacheL1),
+		cacheL2:  copyL2(ctx.cacheL2),
+		cacheL3:  copyL3(ctx.cacheL3),
+		cacheL4:  copyL4(ctx.cacheL4),
 	}
 }
 
