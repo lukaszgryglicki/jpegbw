@@ -112,6 +112,7 @@ func images2RGBA(args []string) error {
 		ahi     [4]float64
 		aga     [4]float64
 		agaB    [4]bool
+		acl     [4]int
 	)
 
 	// Main library context
@@ -145,6 +146,21 @@ func images2RGBA(args []string) error {
 		if noA && colidx == 3 {
 			continue
 		}
+
+		// Per color cache level 0-4
+		clS := os.Getenv(colrgba + "C")
+		cl := 0
+		if clS != "" {
+			v, err := strconv.Atoi(clS)
+			if err != nil {
+				return err
+			}
+			if v < 0 || v > 4 {
+				return fmt.Errorf("C (cache level) must be from 0-4 range")
+			}
+			cl = v
+		}
+
 		fun := os.Getenv(colrgba + "F")
 		bFun[colidx] = false
 		if fun != "" {
@@ -157,6 +173,7 @@ func images2RGBA(args []string) error {
 			if err != nil {
 				return err
 			}
+			fctx[colidx].SetCache(cl)
 			bFun[colidx] = true
 		}
 		// I (use imaginary part of function result instead of real)
@@ -254,14 +271,15 @@ func images2RGBA(args []string) error {
 		ag[colidx] = g
 		ab[colidx] = b
 		alo[colidx] = lo
+		acl[colidx] = cl
 		ahi[colidx] = hi
 		agaB[colidx] = gaB
 		aga[colidx] = ga
 
 		fmt.Printf(
-			"Final %s RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, quality: %d, gamma: (%v, %f), threads: %d, override: %v,%s,%s\n",
+			"Final %s RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, quality: %d, gamma: (%v, %f), cache: %d, threads: %d, override: %v,%s,%s\n",
 			colrgba, fact, ar[colidx], ag[colidx], ab[colidx], alo[colidx], ahi[colidx],
-			jpegq, agaB[colidx], aga[colidx], thrN, overB, overFrom, overTo,
+			jpegq, agaB[colidx], aga[colidx], acl[colidx], thrN, overB, overFrom, overTo,
 		)
 	}
 
@@ -636,6 +654,7 @@ XLO - when calculating intensity range, discard values than are in this lower %,
 XHI - when calculating intensity range, discard values that are in this higher %, for example 3
 XGA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)->(x,pow(x, GA)) mapping
 XF - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
+XC - function cache level (0-no cache, 1-1st arg caching, 2-1st and 2nd arg caching, ... 4 - 4 args caching)
 LIB - if F is used and F calls external functions, thery need to be loaded for this C library
 NF - set maximum number of distinct functions in the parser, if not set, default 128 is used
 XI - use imaginary part of fuction return value instead of real, use like I=1
