@@ -11,8 +11,11 @@ import (
 	"math/cmplx"
 	"strconv"
 	"strings"
+	"sync"
 	"unsafe"
 )
+
+var gmtx [4]sync.RWMutex
 
 // FparCtx - context for expression parser
 type FparCtx struct {
@@ -28,6 +31,7 @@ type FparCtx struct {
 	alphas   map[string]struct{}
 	cidents  map[string]*C.char
 	cacheLvl int
+	cacheIdx int
 	cacheL1  map[complex128]complex128
 	cacheL2  map[[2]complex128]complex128
 	cacheL3  map[[3]complex128]complex128
@@ -82,6 +86,12 @@ func copyL4(i map[[4]complex128]complex128) map[[4]complex128]complex128 {
 func (ctx *FparCtx) Cpy() FparCtx {
 	// debug: fmt.Printf("copying context\n")
 	// We just copy references to maps, not maps, but init is only called from single thread and then map is only read not modified
+
+	// Not sure if this is safe, but seems like we can skip mutex when copying context
+	//if ctx.cacheLvl > 0 {
+	//  gmtx[ctx.cacheIdx].Lock()
+	//  defer func() { gmtx[ctx.cacheIdx].Unlock() }()
+	//}
 	return FparCtx{
 		buffer:   ctx.buffer,
 		rbuffer:  ctx.rbuffer,
@@ -95,10 +105,15 @@ func (ctx *FparCtx) Cpy() FparCtx {
 		alphas:   ctx.alphas,
 		cidents:  ctx.cidents,
 		cacheLvl: ctx.cacheLvl,
-		cacheL1:  copyL1(ctx.cacheL1),
-		cacheL2:  copyL2(ctx.cacheL2),
-		cacheL3:  copyL3(ctx.cacheL3),
-		cacheL4:  copyL4(ctx.cacheL4),
+		cacheIdx: ctx.cacheIdx,
+		cacheL1:  ctx.cacheL1,
+		cacheL2:  ctx.cacheL2,
+		cacheL3:  ctx.cacheL3,
+		cacheL4:  ctx.cacheL4,
+		//cacheL1:  copyL1(ctx.cacheL1),
+		//cacheL2:  copyL2(ctx.cacheL2),
+		//cacheL3:  copyL3(ctx.cacheL3),
+		//cacheL4:  copyL4(ctx.cacheL4),
 	}
 }
 
@@ -110,11 +125,13 @@ func (ctx *FparCtx) Init(lib string, n uint) bool {
 	return C.init(clib, C.size_t(n)) == 1
 }
 
-// SetCache - sets N dimensional cache
-func (ctx *FparCtx) SetCache(n int) {
-	if n < 1 || n > 4 {
+// SetCache - sets N dimensional cache, I is color idx R=0, G=1, B=2, A=3
+// Not thread safe, should be called before using multiple threads
+func (ctx *FparCtx) SetCache(n, i int) {
+	if n < 1 || n > 4 || i < 0 || i >= 4 {
 		return
 	}
+	ctx.cacheIdx = i
 	ctx.cacheLvl = n
 	if n == 1 {
 		ctx.cacheL1 = make(map[complex128]complex128)
@@ -513,13 +530,25 @@ func (ctx *FparCtx) cacheHit(args []complex128) (complex128, bool) {
 		ok bool
 	)
 	if ctx.cacheL1 != nil {
-		v, ok = ctx.cacheL1[args[0]]
+		k := args[0]
+		gmtx[ctx.cacheIdx].RLock()
+		v, ok = ctx.cacheL1[k]
+		gmtx[ctx.cacheIdx].RUnlock()
 	} else if ctx.cacheL2 != nil {
-		v, ok = ctx.cacheL2[[2]complex128{args[0], args[1]}]
+		k := [2]complex128{args[0], args[1]}
+		gmtx[ctx.cacheIdx].RLock()
+		v, ok = ctx.cacheL2[k]
+		gmtx[ctx.cacheIdx].RUnlock()
 	} else if ctx.cacheL3 != nil {
-		v, ok = ctx.cacheL3[[3]complex128{args[0], args[1], args[2]}]
+		k := [3]complex128{args[0], args[1], args[2]}
+		gmtx[ctx.cacheIdx].RLock()
+		v, ok = ctx.cacheL3[k]
+		gmtx[ctx.cacheIdx].RUnlock()
 	} else if ctx.cacheL4 != nil {
-		v, ok = ctx.cacheL4[[4]complex128{args[0], args[1], args[2], args[3]}]
+		k := [4]complex128{args[0], args[1], args[2], args[3]}
+		gmtx[ctx.cacheIdx].RLock()
+		v, ok = ctx.cacheL4[k]
+		gmtx[ctx.cacheIdx].RUnlock()
 	}
 	return v, ok
 }
@@ -527,13 +556,25 @@ func (ctx *FparCtx) cacheHit(args []complex128) (complex128, bool) {
 // setCache - store value for cache
 func (ctx *FparCtx) setCache(args []complex128, v complex128) {
 	if ctx.cacheL1 != nil {
-		ctx.cacheL1[args[0]] = v
+		k := args[0]
+		gmtx[ctx.cacheIdx].Lock()
+		ctx.cacheL1[k] = v
+		gmtx[ctx.cacheIdx].Unlock()
 	} else if ctx.cacheL2 != nil {
-		ctx.cacheL2[[2]complex128{args[0], args[1]}] = v
+		k := [2]complex128{args[0], args[1]}
+		gmtx[ctx.cacheIdx].Lock()
+		ctx.cacheL2[k] = v
+		gmtx[ctx.cacheIdx].Unlock()
 	} else if ctx.cacheL3 != nil {
-		ctx.cacheL3[[3]complex128{args[0], args[1], args[2]}] = v
+		k := [3]complex128{args[0], args[1], args[2]}
+		gmtx[ctx.cacheIdx].Lock()
+		ctx.cacheL3[k] = v
+		gmtx[ctx.cacheIdx].Unlock()
 	} else if ctx.cacheL4 != nil {
-		ctx.cacheL4[[4]complex128{args[0], args[1], args[2], args[3]}] = v
+		k := [4]complex128{args[0], args[1], args[2], args[3]}
+		gmtx[ctx.cacheIdx].Lock()
+		ctx.cacheL4[k] = v
+		gmtx[ctx.cacheIdx].Unlock()
 	}
 }
 

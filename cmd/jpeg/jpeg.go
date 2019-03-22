@@ -173,7 +173,7 @@ func images2RGBA(args []string) error {
 			if err != nil {
 				return err
 			}
-			fctx[colidx].SetCache(cl)
+			fctx[colidx].SetCache(cl, colidx)
 			bFun[colidx] = true
 		}
 		// I (use imaginary part of function result instead of real)
