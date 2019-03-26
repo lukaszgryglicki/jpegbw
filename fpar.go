@@ -564,37 +564,32 @@ func (ctx *FparCtx) expression() complex128 {
 			c2 := ctx.conditional()
 			if real(c1) < real(c2) {
 				return complex128(1)
-			} else {
-				return complex128(0)
 			}
+			return complex128(0)
 		case ">":
 			c2 := ctx.conditional()
 			if real(c1) > real(c2) {
 				return complex128(1)
-			} else {
-				return complex128(0)
 			}
+			return complex128(0)
 		case "=":
 			c2 := ctx.conditional()
 			if real(c1) == real(c2) {
 				return complex128(1)
-			} else {
-				return complex128(0)
 			}
+			return complex128(0)
 		case "|":
 			c2 := ctx.conditional()
 			if real(c1) > 0 || real(c2) > 0 {
 				return complex128(1)
-			} else {
-				return complex128(0)
 			}
+			return complex128(0)
 		case "&":
 			c2 := ctx.conditional()
 			if real(c1) > 0 && real(c2) > 0 {
 				return complex128(1)
-			} else {
-				return complex128(0)
 			}
+			return complex128(0)
 		default:
 			return c1
 		}
