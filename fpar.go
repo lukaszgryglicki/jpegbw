@@ -464,11 +464,44 @@ func (ctx *FparCtx) factor() complex128 {
 		if isArg {
 			f = arg
 		} else {
-			val, gotVal := ctx.callFunction(ident)
-			if gotVal {
-				f = val
+			if ident == "if" {
+				ctx.skipBlanks()
+				if ctx.ch == "(" {
+					cond := ctx.expression()
+					ctx.skipBlanks()
+					if ctx.ch == "," {
+						alt1 := ctx.expression()
+						ctx.skipBlanks()
+						if ctx.ch == "," {
+							alt2 := ctx.expression()
+							ctx.skipBlanks()
+							if ctx.ch == ")" {
+								ctx.readNextChar()
+								ctx.skipBlanks()
+								if real(cond) > 0 {
+									f = alt1
+								} else {
+									f = alt2
+								}
+							} else {
+								ctx.er(fmt.Errorf("missing ) after if 2nd alternative: position: %s", ctx.pos()))
+							}
+						} else {
+							ctx.er(fmt.Errorf("missing , after if 1st alternative: position: %s", ctx.pos()))
+						}
+					} else {
+						ctx.er(fmt.Errorf("missing , after if condition: position: %s", ctx.pos()))
+					}
+				} else {
+					ctx.er(fmt.Errorf("missing ( after if: position: %s", ctx.pos()))
+				}
 			} else {
-				ctx.er(fmt.Errorf("don't know what to do with '%s': position: %s", ident, ctx.pos()))
+				val, gotVal := ctx.callFunction(ident)
+				if gotVal {
+					f = val
+				} else {
+					ctx.er(fmt.Errorf("don't know what to do with '%s': position: %s", ident, ctx.pos()))
+				}
 			}
 		}
 	}
@@ -505,7 +538,7 @@ func (ctx *FparCtx) term() complex128 {
 	}
 }
 
-func (ctx *FparCtx) expression() complex128 {
+func (ctx *FparCtx) conditional() complex128 {
 	t := ctx.term()
 	for {
 		switch ctx.ch {
@@ -519,6 +552,51 @@ func (ctx *FparCtx) expression() complex128 {
 			// debug: fmt.Printf("expression: position: %s -> %f\n", ctx.pos(), t)
 		default:
 			return t
+		}
+	}
+}
+
+func (ctx *FparCtx) expression() complex128 {
+	c1 := ctx.conditional()
+	for {
+		switch ctx.ch {
+		case "<":
+			c2 := ctx.conditional()
+			if real(c1) < real(c2) {
+				return complex128(1)
+			} else {
+				return complex128(0)
+			}
+		case ">":
+			c2 := ctx.conditional()
+			if real(c1) > real(c2) {
+				return complex128(1)
+			} else {
+				return complex128(0)
+			}
+		case "=":
+			c2 := ctx.conditional()
+			if real(c1) == real(c2) {
+				return complex128(1)
+			} else {
+				return complex128(0)
+			}
+		case "|":
+			c2 := ctx.conditional()
+			if real(c1) > 0 || real(c2) > 0 {
+				return complex128(1)
+			} else {
+				return complex128(0)
+			}
+		case "&":
+			c2 := ctx.conditional()
+			if real(c1) > 0 && real(c2) > 0 {
+				return complex128(1)
+			} else {
+				return complex128(0)
+			}
+		default:
+			return c1
 		}
 	}
 }
