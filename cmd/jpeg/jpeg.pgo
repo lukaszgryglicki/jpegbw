@@ -139,6 +139,7 @@ func images2RGBA(args []string) error {
 	}
 
 	// Additional in-image  info: R,G,B,Gs scale to the right and RGB histogram on the bottom
+	einf := os.Getenv("EINF") != ""
 	infS := os.Getenv("INF")
 	inf := 0
 	shpow := 0.7
@@ -431,6 +432,7 @@ func images2RGBA(args []string) error {
 				return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
 			}
 			mult := 65535.0 / float64(hiI-loI)
+			// info: fmt.Printf("histCum: %+v\n", histCum.str())
 
 			// In INF mode we need histogramScaled context
 			if inf > 0 {
@@ -477,22 +479,29 @@ func images2RGBA(args []string) error {
 				maxHSF := float64(maxHS)
 				finf := float64(inf)
 				// debug: fmt.Printf("histScaled: %+v\n", histScaled.str())
+        ran := (hiI - loI) + 1
+        ran4 := (ran + 1) / 4
 				getPixelFunc = func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32) {
 					if i < x-inf && j < y-inf {
 						return (*img).At(i, j).RGBA()
 					} else if j < y-inf {
-						g := uint32((j * 0xffff) / (y - inf))
-						d := g / 0x4000
-						r := 0xffff - ((g % 0x4000) << 2)
-						switch d {
-						case 0:
-							return r, r, r, uint32(0xffff)
-						case 1:
-							return r, 0, 0, uint32(0xffff)
-						case 2:
-							return 0, r, 0, uint32(0xffff)
-						default:
-							return 0, 0, r, uint32(0xffff)
+						if einf {
+						  g := (uint32(j) * uint32(ran)) / uint32(y - inf)
+							d := g / uint32(ran4)
+							r := uint32(hiI) - ((g % uint32(ran4)) << 2)
+							switch d {
+							case 0:
+								return r, r, r, uint32(0xffff)
+							case 1:
+								return r, 0, 0, uint32(0xffff)
+							case 2:
+								return 0, r, 0, uint32(0xffff)
+							default:
+								return 0, 0, r, uint32(0xffff)
+							}
+						} else {
+						  g := uint32(hiI) - ((uint32(j) * uint32(ran)) / uint32(y - inf))
+							return g, g, g, uint32(0xffff)
 						}
 					}
 					hv := float64(histScaled[uint16(i)]) / maxHSF
@@ -547,7 +556,8 @@ func images2RGBA(args []string) error {
 					for j := 0; j < y; j++ {
 						fj := float64(j) / float64(y)
 						pr, pg, pb, pa := getPixelFunc(&m, i, j)
-						if inf > 0 && (i >= xo || j >= yo) {
+						//if inf > 0 && (i >= xo || j >= yo) {
+						if inf > 0 && j >= yo {
 							switch colidx {
 							case 0:
 								pxdata[i][j][colidx] = uint16(pr)
@@ -789,6 +799,7 @@ XI - use imaginary part of fuction return value instead of real, use like I=1
 N - set number of CPUs to process data
 O - eventual overwite file name config, example: ".jpg:.png"
 INF - set additional info on image size is N when INF=N
+EINF - more complex info.
 HPOW - INF histogram 0-0x10000 --> 0-1 --> x. f(x) = pow(x, HPOW). Default 0.7
 `
 		fmt.Printf("%s\n", helpStr)
