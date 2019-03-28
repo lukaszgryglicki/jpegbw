@@ -479,14 +479,20 @@ func images2RGBA(args []string) error {
 				maxHSF := float64(maxHS)
 				finf := float64(inf)
 				// debug: fmt.Printf("histScaled: %+v\n", histScaled.str())
-        ran := (hiI - loI) + 1
-        ran4 := (ran + 1) / 4
+				ran := (hiI - loI) + 1
+				ran4 := (ran + 1) / 4
+				if ran == 0 {
+					ran = 0xffff
+				}
+				if ran4 == 0 {
+					ran4 = 0x4000
+				}
 				getPixelFunc = func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32) {
 					if i < x-inf && j < y-inf {
 						return (*img).At(i, j).RGBA()
 					} else if j < y-inf {
 						if einf {
-						  g := (uint32(j) * uint32(ran)) / uint32(y - inf)
+							g := (uint32(j) * uint32(ran)) / uint32(y-inf)
 							d := g / uint32(ran4)
 							r := uint32(hiI) - ((g % uint32(ran4)) << 2)
 							switch d {
@@ -500,7 +506,7 @@ func images2RGBA(args []string) error {
 								return 0, 0, r, uint32(0xffff)
 							}
 						} else {
-						  g := uint32(hiI) - ((uint32(j) * uint32(ran)) / uint32(y - inf))
+							g := uint32(hiI) - ((uint32(j) * uint32(ran)) / uint32(y-inf))
 							return g, g, g, uint32(0xffff)
 						}
 					}
