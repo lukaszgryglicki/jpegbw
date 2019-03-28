@@ -138,6 +138,29 @@ func images2RGBA(args []string) error {
 		defer func() { mfctx.Tidy() }()
 	}
 
+	// Additional in-image  info: R,G,B,Gs scale to the right and RGB histogram on the bottom
+	infS := os.Getenv("INF")
+	inf := 0
+	shpow := 0.7
+	if infS != "" {
+		in, err := strconv.Atoi(infS)
+		if err != nil {
+			return err
+		}
+		inf = in
+		shpowS := os.Getenv("HPOW")
+		if shpowS != "" {
+			v, err := strconv.ParseFloat(shpowS, 64)
+			if err != nil {
+				return err
+			}
+			if v < 0.05 || v > 20.0 {
+				return fmt.Errorf("HPOW must be from 0.05-20 range")
+			}
+			shpow = v
+		}
+	}
+
 	// No alpha processing
 	noA := os.Getenv("NA") != ""
 
@@ -286,6 +309,14 @@ func images2RGBA(args []string) error {
 	// Flushing before endline
 	flush := bufio.NewWriter(os.Stdout)
 
+	// Function extracting image data
+	var getPixelFunc func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32)
+	if inf <= 0 {
+		getPixelFunc = func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32) {
+			return (*img).At(i, j).RGBA()
+		}
+	}
+
 	// Iterate given files
 	n := len(args)
 	for k, fn := range args {
@@ -310,8 +341,16 @@ func images2RGBA(args []string) error {
 		bounds := m.Bounds()
 		x := bounds.Max.X
 		y := bounds.Max.Y
+		xo := x
+		yo := y
+		if inf > 0 {
+			x += inf
+			y += inf
+			fmt.Printf(" (%d/%d x %d/%d)...", xo, x, yo, y)
+		} else {
+			fmt.Printf(" (%d x %d)...", x, y)
+		}
 		dtEndI := time.Now()
-		fmt.Printf(" (%d x %d)...", x, y)
 		_ = flush.Flush()
 
 		var pxdata [][][4]uint16
@@ -323,7 +362,7 @@ func images2RGBA(args []string) error {
 		}
 
 		// Convert
-		all := float64(x * y)
+		all := float64(xo * yo)
 		var (
 			//at    [4]uint32
 			timeF time.Duration
@@ -346,8 +385,8 @@ func images2RGBA(args []string) error {
 			maxGs := uint16(0)
 
 			dtStartH := time.Now()
-			for i := 0; i < x; i++ {
-				for j := 0; j < y; j++ {
+			for i := 0; i < xo; i++ {
+				for j := 0; j < yo; j++ {
 					pr, pg, pb, _ := m.At(i, j).RGBA()
 					// debug2: fmt.Printf("(%d,%d,%d)\n", pr, pg, pb)
 					gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
@@ -392,6 +431,81 @@ func images2RGBA(args []string) error {
 				return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
 			}
 			mult := 65535.0 / float64(hiI-loI)
+
+			// In INF mode we need histogramScaled context
+			if inf > 0 {
+				b := 65535.0 / float64(x)
+				histScaled := make(intHist)
+				maxHS := 0
+				for i := uint16(0); i < uint16(x); i++ {
+					ff := (float64(i) * b) / 65535.0
+					f := uint16(math.Pow(ff, shpow) * 65535.0)
+					tf := (float64(i+1) * b) / 65535.0
+					t := uint16(math.Pow(tf, shpow) * 65535.0)
+					hv := 0
+					for h := f; h < t; h++ {
+						hv += hist[h]
+					}
+					histScaled[i] = hv
+					if hv > maxHS {
+						maxHS = hv
+					}
+				}
+				prev := 0
+				next := 0
+				prevI := uint16(0xffff)
+				for i := uint16(0); i < uint16(x); i++ {
+					v := histScaled[i]
+					if v > 0 {
+						prev = v
+						prevI = i
+					} else {
+						nextJ := uint16(0xffff)
+						for j := i + 1; j < uint16(x); j++ {
+							w := histScaled[j]
+							if w > 0 {
+								next = w
+								nextJ = j
+								break
+							}
+						}
+						if prevI != 0xffff && nextJ != 0xffff {
+							histScaled[i] = prev + int((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
+						}
+					}
+				}
+				maxHSF := float64(maxHS)
+				finf := float64(inf)
+				// debug: fmt.Printf("histScaled: %+v\n", histScaled.str())
+				getPixelFunc = func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32) {
+					if i < x-inf && j < y-inf {
+						return (*img).At(i, j).RGBA()
+					} else if j < y-inf {
+						g := uint32((j * 0xffff) / (y - inf))
+						d := g / 0x4000
+						r := 0xffff - ((g % 0x4000) << 2)
+						switch d {
+						case 0:
+							return r, r, r, uint32(0xffff)
+						case 1:
+							return r, 0, 0, uint32(0xffff)
+						case 2:
+							return 0, r, 0, uint32(0xffff)
+						default:
+							return 0, 0, r, uint32(0xffff)
+						}
+					}
+					hv := float64(histScaled[uint16(i)]) / maxHSF
+					cv := float64((y-j)-1) / finf
+					//fmt.Printf("(%d,%d): %f (%d/%f), %f\n", i, j, hv, histScaled[uint16(i)], maxHSF, cv)
+					g := uint32(0xffff)
+					if cv >= hv {
+						g = uint32(0)
+					}
+					return g, g, g, uint32(0xffff)
+				}
+			}
+
 			dtEndH := time.Now()
 			timeH += dtEndH.Sub(dtStartH)
 			fmt.Printf(" %s: (%d, %d) int: (%d, %d) mult: %f...", colrgba, minGs, maxGs, loI, hiI, mult)
@@ -432,7 +546,20 @@ func images2RGBA(args []string) error {
 					trace := 1.0
 					for j := 0; j < y; j++ {
 						fj := float64(j) / float64(y)
-						pr, pg, pb, pa := m.At(i, j).RGBA()
+						pr, pg, pb, pa := getPixelFunc(&m, i, j)
+						if inf > 0 && (i >= xo || j >= yo) {
+							switch colidx {
+							case 0:
+								pxdata[i][j][colidx] = uint16(pr)
+							case 1:
+								pxdata[i][j][colidx] = uint16(pg)
+							case 2:
+								pxdata[i][j][colidx] = uint16(pb)
+							default:
+								pxdata[i][j][colidx] = uint16(pa)
+							}
+							continue
+						}
 						gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
 						iv := int(gs) - int(loI)
 						if iv < 0 {
@@ -661,6 +788,8 @@ NF - set maximum number of distinct functions in the parser, if not set, default
 XI - use imaginary part of fuction return value instead of real, use like I=1
 N - set number of CPUs to process data
 O - eventual overwite file name config, example: ".jpg:.png"
+INF - set additional info on image size is N when INF=N
+HPOW - INF histogram 0-0x10000 --> 0-1 --> x. f(x) = pow(x, HPOW). Default 0.7
 `
 		fmt.Printf("%s\n", helpStr)
 	}
