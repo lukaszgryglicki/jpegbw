@@ -535,8 +535,10 @@ func images2RGBA(args []string) error {
 				}
 				getPixelFunc = func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32) {
 					if i < x-inf && j < y-(2*inf) {
+						// normal pixel
 						return (*img).At(i, j).RGBA()
 					} else if j < y-(2*inf) {
+						// scale on the right: GS or GS, R, G, B
 						if einf {
 							g := (uint32(j) * uint32(ran)) / uint32(y-inf)
 							d := g / uint32(ran4)
@@ -556,6 +558,7 @@ func images2RGBA(args []string) error {
 							return g, g, g, uint32(0xffff)
 						}
 					}
+					// 2 histograms on the botton: scaled & absolute
 					cv := float64((y-j)-1) / finf
 					ncv := cv * 2.
 					g := uint32(0xffff)
