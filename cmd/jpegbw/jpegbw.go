@@ -18,39 +18,6 @@ import (
 	"time"
 )
 
-type intHist map[uint16]int
-type floatHist map[uint16]float64
-
-func (m intHist) str() string {
-	s := ""
-	for i := uint16(0); true; i++ {
-		v := m[i]
-		if v > 0 {
-			s += fmt.Sprintf("%d => %d\n", i, m[i])
-		}
-		if i == 0xffff {
-			break
-		}
-	}
-	return s
-}
-
-func (m floatHist) str() string {
-	s := ""
-	prev := -1.0
-	for i := uint16(0); true; i++ {
-		v := m[i]
-		if v > 0.00001 && v < 99.99999 && math.Abs(v-prev) > 0.00001 {
-			s += fmt.Sprintf("%d => %.5f%%\n", i, m[i])
-		}
-		prev = v
-		if i == 0xffff {
-			break
-		}
-	}
-	return s
-}
-
 // images2BW: convert given images to bw: iname.ext -> bw_iname.ext, dir/iname.ext -> dir/bw_iname.ext
 // Other parameters are set via env variables (see main() function it describes all env params):
 func images2BW(args []string) error {
@@ -263,7 +230,7 @@ func images2BW(args []string) error {
 		target := image.NewGray16(image.Rect(0, 0, x, y))
 
 		// Convert
-		hist := make(intHist)
+		hist := make(jpegbw.IntHist)
 		minGs := uint16(0xffff)
 		maxGs := uint16(0)
 
@@ -287,7 +254,7 @@ func images2BW(args []string) error {
 
 		// Calculations
 		all := float64(x * y)
-		histCum := make(floatHist)
+		histCum := make(jpegbw.FloatHist)
 		sum := 0
 		for i := uint16(0); true; i++ {
 			sum += hist[i]

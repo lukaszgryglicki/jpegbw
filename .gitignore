@@ -20,6 +20,7 @@
 /f
 /plot
 /jpeg
+/hist
 
 # JPEGs
 *.jp*g
