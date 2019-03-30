@@ -89,4 +89,4 @@ strip: ${BINARIES} ${C_LIBS}
 	${STRIP} ${C_LIBS}
 
 clean:
-	rm -f ${BINARIES} ${C_LIBS}
+	rm -f ${BINARIES} ${C_LIBS} *.hist *.hint
