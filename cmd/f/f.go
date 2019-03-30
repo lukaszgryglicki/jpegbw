@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"jpegbw"
 	"math/cmplx"
 	"os"
 	"strconv"
+
+	"github.com/lukaszgryglicki/jpegbw"
 )
 
 func fCall(f string, za []string) error {

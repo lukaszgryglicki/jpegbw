@@ -5,13 +5,14 @@ import (
 	"image"
 	"image/draw"
 	_ "image/png"
-	"jpegbw"
 	"log"
 	"math/cmplx"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/lukaszgryglicki/jpegbw"
 
 	"github.com/go-gl/gl/v4.1-core/gl"
 	"github.com/go-gl/glfw/v3.2/glfw"

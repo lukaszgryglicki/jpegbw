@@ -8,7 +8,6 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
-	"jpegbw"
 	"math"
 	"math/cmplx"
 	"os"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lukaszgryglicki/jpegbw"
 
 	"github.com/andybons/gogif"
 )
