@@ -32,7 +32,7 @@ func hist(args []string) error {
 	// Number of frames to merge histogram data (MF moving average MF MA)
 	n := len(args)
 	mfS := os.Getenv("MF")
-	mf := 16
+	mf := 32
 	if mfS != "" {
 		m, err := strconv.Atoi(mfS)
 		if err != nil {
@@ -385,7 +385,7 @@ This program manipulates 4 channels R, G, B, A.
 When you see X replace it with R, G, B or A.
 NA - skip alpha calculation, alpha will be 1 everywhere
 WH - write *.hist files
-MF - merge frames (calculate histogram from MF frames), moving histogram, default 16
+MF - merge frames (calculate histogram from MF frames), moving histogram, default 32 frames around current
 XLO - when calculating intensity range, discard values than are in this lower %, for example 3
 XHI - when calculating intensity range, discard values that are in this higher %, for example 3
 N - set number of CPUs to process data
