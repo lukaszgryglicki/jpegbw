@@ -142,7 +142,8 @@ func images2RGBA(args []string) error {
 	einf := os.Getenv("EINF") != ""
 	infS := os.Getenv("INF")
 	inf := 0
-	shpow := 0.7
+	shpow := 1.0
+	bhpow := false
 	if infS != "" {
 		in, err := strconv.Atoi(infS)
 		if err != nil {
@@ -159,6 +160,7 @@ func images2RGBA(args []string) error {
 				return fmt.Errorf("HPOW must be from 0.05-20 range")
 			}
 			shpow = v
+			bhpow = true
 		}
 	}
 
@@ -439,21 +441,39 @@ func images2RGBA(args []string) error {
 				b := 65535.0 / float64(x)
 				histScaled := make(intHist)
 				maxHS := 0
-				for i := uint16(0); i < uint16(x); i++ {
-					ff := (float64(i) * b) / 65535.0
-					f := uint16(math.Pow(ff, shpow) * 65535.0)
-					tf := (float64(i+1) * b) / 65535.0
-					t := uint16(math.Pow(tf, shpow) * 65535.0)
-					if t == f {
-						t++
+				if bhpow {
+					for i := uint16(0); i < uint16(x); i++ {
+						ff := (float64(i) * b) / 65535.0
+						f := uint16(math.Pow(ff, shpow) * 65535.0)
+						tf := (float64(i+1) * b) / 65535.0
+						t := uint16(math.Pow(tf, shpow) * 65535.0)
+						if t == f {
+							t++
+						}
+						hv := 0
+						for h := f; h < t; h++ {
+							hv += hist[h]
+						}
+						histScaled[i] = hv
+						if hv > maxHS {
+							maxHS = hv
+						}
 					}
-					hv := 0
-					for h := f; h < t; h++ {
-						hv += hist[h]
-					}
-					histScaled[i] = hv
-					if hv > maxHS {
-						maxHS = hv
+				} else {
+					for i := uint16(0); i < uint16(x); i++ {
+						f := uint16(float64(i) * b)
+						t := uint16(float64(i+1) * b)
+						if t == f {
+							t++
+						}
+						hv := 0
+						for h := f; h < t; h++ {
+							hv += hist[h]
+						}
+						histScaled[i] = hv
+						if hv > maxHS {
+							maxHS = hv
+						}
 					}
 				}
 				fran := float64((hiI - loI) + 1)
@@ -863,7 +883,7 @@ N - set number of CPUs to process data
 O - eventual overwite file name config, example: ".jpg:.png"
 INF - set additional info on image size is N when INF=N
 EINF - more complex info.
-HPOW - INF histogram 0-0x10000 --> 0-1 --> x. f(x) = pow(x, HPOW). Default 0.7
+HPOW - INF histogram 0-0x10000 --> 0-1 --> x. f(x) = pow(x, HPOW). Default 1
 `
 		fmt.Printf("%s\n", helpStr)
 	}
