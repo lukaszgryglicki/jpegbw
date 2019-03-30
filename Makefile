@@ -27,7 +27,7 @@ all: ${C_LIBS} check ${BINARIES}
 gengo: cmd/gengo/gengo.go
 	${GO_ENV} ${GO_BUILD} -o gengo cmd/gengo/gengo.go
 
-hist: cmd/hist/hist.go
+hist: cmd/hist/hist.go ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o hist cmd/hist/hist.go
 
 cmap: cmd/cmap/cmap.go ${C_LIBS} ${GO_LIB_FILES}

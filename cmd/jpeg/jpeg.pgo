@@ -18,39 +18,6 @@ import (
 	"time"
 )
 
-type intHist map[uint16]int
-type floatHist map[uint16]float64
-
-func (m intHist) str() string {
-	s := ""
-	for i := uint16(0); true; i++ {
-		v := m[i]
-		if v > 0 {
-			s += fmt.Sprintf("%d => %d\n", i, m[i])
-		}
-		if i == 0xffff {
-			break
-		}
-	}
-	return s
-}
-
-func (m floatHist) str() string {
-	s := ""
-	prev := -1.0
-	for i := uint16(0); true; i++ {
-		v := m[i]
-		if v > 0.00001 && v < 99.99999 && math.Abs(v-prev) > 0.00001 {
-			s += fmt.Sprintf("%d => %.5f%%\n", i, m[i])
-		}
-		prev = v
-		if i == 0xffff {
-			break
-		}
-	}
-	return s
-}
-
 // images2RGBA: convert given images to bw: iname.ext -> co_iname.ext, dir/iname.ext -> dir/co_iname.ext
 // Other parameters are set via env variables (see main() function it describes all env params):
 func images2RGBA(args []string) error {
@@ -383,7 +350,7 @@ func images2RGBA(args []string) error {
 			ga := aga[colidx]
 			gaB := agaB[colidx]
 
-			hist := make(intHist)
+			hist := make(jpegbw.IntHist)
 			minGs := uint16(0xffff)
 			maxGs := uint16(0)
 
@@ -405,7 +372,7 @@ func images2RGBA(args []string) error {
 			// info: fmt.Printf("hist: %+v\n", hist.str())
 
 			// Calculations
-			histCum := make(floatHist)
+			histCum := make(jpegbw.FloatHist)
 			sum := 0
 			for i := uint16(0); true; i++ {
 				sum += hist[i]
@@ -439,7 +406,7 @@ func images2RGBA(args []string) error {
 			// In INF mode we need histogramScaled context
 			if inf > 0 {
 				b := 65535.0 / float64(x)
-				histScaled := make(intHist)
+				histScaled := make(jpegbw.IntHist)
 				maxHS := 0
 				if bhpow {
 					for i := uint16(0); i < uint16(x); i++ {
@@ -478,7 +445,7 @@ func images2RGBA(args []string) error {
 				}
 				fran := float64((hiI - loI) + 1)
 				b2 := fran / float64(x)
-				histScaled2 := make(intHist)
+				histScaled2 := make(jpegbw.IntHist)
 				maxHS2 := 0
 				for i := uint16(0); i < uint16(x); i++ {
 					f := loI + uint16(float64(i)*b2)
