@@ -219,6 +219,10 @@ func images2BW(args []string) error {
 			_ = reader.Close()
 			return err
 		}
+		err = reader.Close()
+		if err != nil {
+			return err
+		}
 		bounds := m.Bounds()
 		x := bounds.Max.X
 		y := bounds.Max.Y
@@ -279,7 +283,6 @@ func images2BW(args []string) error {
 			}
 		}
 		if loI >= hiI {
-			_ = reader.Close()
 			return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
 		}
 		mult := 65535.0 / float64(hiI-loI)
@@ -389,7 +392,6 @@ func images2BW(args []string) error {
 			if nThreads == thrN {
 				e := <-che
 				if e != nil {
-					_ = reader.Close()
 					return e
 				}
 				nThreads--
@@ -398,19 +400,12 @@ func images2BW(args []string) error {
 		for nThreads > 0 {
 			e := <-che
 			if e != nil {
-				_ = reader.Close()
 				return e
 			}
 			nThreads--
 		}
 		dtEndF := time.Now()
 		pps := (all / dtEndF.Sub(dtStartF).Seconds()) / 1048576.0
-
-		// Close reader
-		err = reader.Close()
-		if err != nil {
-			return err
-		}
 
 		// Eventual file name override
 		ifn := fn

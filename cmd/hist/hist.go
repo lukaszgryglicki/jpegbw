@@ -6,12 +6,29 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io/ioutil"
 	"jpegbw"
 	"os"
 	"runtime"
 	"strconv"
 	"time"
+
+	yaml "gopkg.in/yaml.v2"
 )
+
+// hint holds moving histogram data for a given file
+type hintData struct {
+	From   int        `yaml:"from"`
+	To     int        `yaml:"to"`
+	Curr   int        `yaml:"curr"`
+	Min    [4]uint16  `yaml:"min"`
+	Max    [4]uint16  `yaml:"max"`
+	LoPerc [4]float64 `yaml:"low_percent"`
+	HiPerc [4]float64 `yaml:"high_percent"`
+	LoIdx  [4]uint16  `yaml:"low_idx"`
+	HiIdx  [4]uint16  `yaml:"high_idx"`
+	Mult   [4]float64 `yaml:"mult"`
+}
 
 func hist(args []string) error {
 	// Parse env
@@ -22,6 +39,24 @@ func hist(args []string) error {
 	)
 	// No alpha processing
 	noA := os.Getenv("NA") != ""
+
+	// No histogram file write
+	wH := os.Getenv("WH") != ""
+
+	// Number of frames to merge histogram data (MF moving average MF MA)
+	n := len(args)
+	mfS := os.Getenv("MF")
+	mf := 16
+	if mfS != "" {
+		m, err := strconv.Atoi(mfS)
+		if err != nil {
+			return err
+		}
+		if m < 1 || m > n {
+			return fmt.Errorf("MF must be from 1-%d range", n)
+		}
+		mf = m
+	}
 
 	// Threads
 	thrsS := os.Getenv("N")
@@ -82,11 +117,15 @@ func hist(args []string) error {
 	}
 
 	// Iterate given files
-	n := len(args)
 	ch := make(chan error)
 	nThreads := 0
+	allHist := [][4]jpegbw.IntHist{}
+	allN := []float64{}
+	for range args {
+		allHist = append(allHist, [4]jpegbw.IntHist{nil, nil, nil, nil})
+		allN = append(allN, 0.0)
+	}
 	for k, fn := range args {
-		fmt.Printf("File %d/%d %s\n", k+1, n, fn)
 		go func(ch chan error, fn string, k int) {
 			// Input
 			reader, err := os.Open(fn)
@@ -97,7 +136,12 @@ func hist(args []string) error {
 
 			// Decode input
 			m, _, err := image.Decode(reader)
-			_ = reader.Close()
+			if err != nil {
+				_ = reader.Close()
+				ch <- err
+				return
+			}
+			err = reader.Close()
 			if err != nil {
 				ch <- err
 				return
@@ -125,6 +169,7 @@ func hist(args []string) error {
 
 			// Convert
 			all := float64(x * y)
+			allN[k] = all
 			var fh jpegbw.FileHist
 
 			// Process RGBA histograms
@@ -180,20 +225,142 @@ func hist(args []string) error {
 					}
 				}
 				if loI >= hiI {
-					_ = reader.Close()
 					ch <- fmt.Errorf("%s:%s calculated integer range is empty: %d-%d", fn, rgba[c], loI, hiI)
 					return
 				}
-				mult := 65535.0 / float64(hiI-loI)
 				// info: fmt.Printf("histCum: %+v\n", histCum.Str())
-				fmt.Printf("%s:%s range(%f%%-%f%%): %04x - %04x, mult: %f\n", fn, rgba[c], lo, hi, loI, hiI, mult)
-				fh.Hist[c] = hist
-				fh.HistCum[c] = histCum
+				// info: mult := 65535.0 / float64(hiI-loI)
+				// info: fmt.Printf("%s:%s %04x - %04x -> range(%f%%-%f%%): %04x - %04x, mult: %f\n", fn, rgba[c], minGs, maxGs, lo, hi, loI, hiI, mult)
+
+				// Update all hist - no mutex needed
+				allHist[k][c] = hist
+
+				// Write histogram data
+				if wH {
+					fh.Hist[c] = hist
+					fh.HistCum[c] = histCum
+				}
+			}
+			if wH {
 				fh.Fn = fn
-				ch <- fh.WriteHist()
+				err = fh.WriteHist()
+				if err != nil {
+					ch <- err
+					return
+				}
+			}
+			ch <- nil
+			return
+		}(ch, fn, k)
+		nThreads++
+		if nThreads == thrN {
+			err := <-ch
+			nThreads--
+			if err != nil {
+				return err
+			}
+		}
+	}
+	for nThreads > 0 {
+		err := <-ch
+		nThreads--
+		if err != nil {
+			return err
+		}
+	}
+
+	// Create moving histograms
+	mf2 := mf >> 1
+	for k := 0; k < n; k++ {
+		f := k - mf2
+		t := k + mf2
+		if f < 0 {
+			f = 0
+		}
+		if t > n {
+			t = n
+		}
+		go func(ch chan error, k, f, t int) {
+			var hint hintData
+			hint.From = f
+			hint.To = t
+			hint.Curr = k
+			for c := 0; c < 4; c++ {
+				if noA && c == 3 {
+					continue
+				}
+				lo := alo[c]
+				hi := ahi[c]
+				hint.LoPerc[c] = lo
+				hint.HiPerc[c] = hi
+				hist := make(jpegbw.IntHist)
+				minV := uint16(0xffff)
+				maxV := uint16(0)
+				all := 0.0
+				for ma := f; ma < t; ma++ {
+					all += allN[ma]
+					for idx, val := range allHist[ma][c] {
+						v, ok := hist[idx]
+						if ok {
+							hist[idx] = v + val
+						} else {
+							hist[idx] = val
+						}
+						if idx < minV {
+							minV = idx
+						}
+						if idx > maxV {
+							maxV = idx
+						}
+					}
+				}
+				// Calculations
+				histCum := make(jpegbw.FloatHist)
+				sum := 0
+				for i := uint16(0); true; i++ {
+					sum += hist[i]
+					histCum[i] = (float64(sum) * 100.0) / all
+					if i == 0xffff {
+						break
+					}
+				}
+				loI := uint16(0)
+				hiI := uint16(0)
+				for i := uint16(1); true; i++ {
+					prev := histCum[i-1]
+					next := histCum[i]
+					if loI == 0 && prev <= lo && lo <= next {
+						loI = i
+					}
+					if prev <= hi && hi <= next {
+						hiI = i
+					}
+					if i == 0xffff {
+						break
+					}
+				}
+				if loI >= hiI {
+					ch <- fmt.Errorf("%s:%s calculated integer range is empty: %d-%d", args[k], rgba[c], loI, hiI)
+					return
+				}
+				hint.Mult[c] = 65535.0 / float64(hiI-loI)
+				hint.Min[c] = minV
+				hint.Max[c] = maxV
+				hint.LoIdx[c] = loI
+				hint.HiIdx[c] = hiI
+				// info: fmt.Printf("> %s:%s[%d-%d]: %04x-%04x -> range(%f%%-%f%%): %04x - %04x, mult: %f\n", args[k], rgba[c], f, t, minV, maxV, lo, hi, loI, hiI, hint.Mult[c])
+			}
+			// Write hint
+			fn := args[k] + ".hint"
+			yamlBytes, err := yaml.Marshal(hint)
+			if err != nil {
+				ch <- err
 				return
 			}
-		}(ch, fn, k)
+			err = ioutil.WriteFile(fn, yamlBytes, 0644)
+			ch <- err
+			return
+		}(ch, k, f, t)
 		nThreads++
 		if nThreads == thrN {
 			err := <-ch
@@ -221,6 +388,20 @@ func main() {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
+	} else {
+		fmt.Printf("Please provide at least one image to convert\n")
+		helpStr := `
+Environment variables:
+This program manipulates 4 channels R, G, B, A.
+When you see X replace it with R, G, B or A.
+NA - skip alpha calculation, alpha will be 1 everywhere
+WH - write *.hist files
+MF - merge frames (calculate histogram from MF frames), moving histogram, default 16
+XLO - when calculating intensity range, discard values than are in this lower %, for example 3
+XHI - when calculating intensity range, discard values that are in this higher %, for example 3
+N - set number of CPUs to process data
+`
+		fmt.Printf("%s\n", helpStr)
 	}
 	dtEnd := time.Now()
 	fmt.Printf("Time: %v\n", dtEnd.Sub(dtStart))
