@@ -1,11 +1,10 @@
 package jpegbw
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math"
-
-	yaml "gopkg.in/yaml.v2"
 )
 
 // IntHist holds uint16 -> int histogram
@@ -16,33 +15,33 @@ type FloatHist map[uint16]float64
 
 // FileHist holds full histogram data for a file
 type FileHist struct {
-	Hist    [4]IntHist   `yaml:"hist"`
-	HistCum [4]FloatHist `yaml:"hist_cum"`
-	Fn      string       `yaml:"file_name"`
+	Hist    [4]IntHist   `json:"hist"`
+	HistCum [4]FloatHist `json:"hist_cum"`
+	Fn      string       `json:"file_name"`
 }
 
 // HintData holds moving histogram data for a given file
 type HintData struct {
-	From   int        `yaml:"from"`
-	To     int        `yaml:"to"`
-	Curr   int        `yaml:"curr"`
-	Min    [4]uint16  `yaml:"min"`
-	Max    [4]uint16  `yaml:"max"`
-	LoPerc [4]float64 `yaml:"low_percent"`
-	HiPerc [4]float64 `yaml:"high_percent"`
-	LoIdx  [4]uint16  `yaml:"low_idx"`
-	HiIdx  [4]uint16  `yaml:"high_idx"`
-	Mult   [4]float64 `yaml:"mult"`
+	From   int        `json:"from"`
+	To     int        `json:"to"`
+	Curr   int        `json:"curr"`
+	Min    [4]uint16  `json:"min"`
+	Max    [4]uint16  `json:"max"`
+	LoPerc [4]float64 `json:"low_percent"`
+	HiPerc [4]float64 `json:"high_percent"`
+	LoIdx  [4]uint16  `json:"low_idx"`
+	HiIdx  [4]uint16  `json:"high_idx"`
+	Mult   [4]float64 `json:"mult"`
 }
 
 // WriteHist - writes histogram to file
 func (fh *FileHist) WriteHist() error {
 	fn := fh.Fn + ".hist"
-	yamlBytes, err := yaml.Marshal(fh)
+	jsonBytes, err := json.Marshal(fh)
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(fn, yamlBytes, 0644)
+	err = ioutil.WriteFile(fn, jsonBytes, 0644)
 	return err
 }
 
