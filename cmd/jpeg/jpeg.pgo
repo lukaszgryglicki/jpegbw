@@ -432,57 +432,62 @@ func images2RGBA(args []string) error {
 			maxGs := uint16(0)
 
 			dtStartH := time.Now()
-			for i := 0; i < xo; i++ {
-				for j := 0; j < yo; j++ {
-					pr, pg, pb, _ := m.At(i, j).RGBA()
-					// debug2: fmt.Printf("(%d,%d,%d)\n", pr, pg, pb)
-					gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
-					if gs < minGs {
-						minGs = gs
-					}
-					if gs > maxGs {
-						maxGs = gs
-					}
-					hist[gs]++
-				}
-			}
-			// info: fmt.Printf("hist: %+v\n", hist.str())
-
-			// Calculations
-			histCum := make(jpegbw.FloatHist)
-			sum := int64(0)
-			for i := uint16(0); true; i++ {
-				sum += hist[i]
-				histCum[i] = (float64(sum) * 100.0) / all
-				if i == 0xffff {
-					break
-				}
-			}
 			loI := uint16(0)
 			hiI := uint16(0)
-			for i := uint16(1); true; i++ {
-				prev := histCum[i-1]
-				next := histCum[i]
-				if loI == 0 && prev <= lo && lo <= next {
-					loI = i
+			if inf > 0 || loi == 0 || hii == 0xffff {
+				for i := 0; i < xo; i++ {
+					for j := 0; j < yo; j++ {
+						pr, pg, pb, _ := m.At(i, j).RGBA()
+						// debug2: fmt.Printf("(%d,%d,%d)\n", pr, pg, pb)
+						gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
+						if gs < minGs {
+							minGs = gs
+						}
+						if gs > maxGs {
+							maxGs = gs
+						}
+						hist[gs]++
+					}
 				}
-				if prev <= hi && hi <= next {
-					hiI = i
+				// info: fmt.Printf("hist: %+v\n", hist.str())
+
+				// Calculations
+				histCum := make(jpegbw.FloatHist)
+				sum := int64(0)
+				for i := uint16(0); true; i++ {
+					sum += hist[i]
+					histCum[i] = (float64(sum) * 100.0) / all
+					if i == 0xffff {
+						break
+					}
 				}
-				if i == 0xffff {
-					break
+				for i := uint16(1); true; i++ {
+					prev := histCum[i-1]
+					next := histCum[i]
+					if loI == 0 && prev <= lo && lo <= next {
+						loI = i
+					}
+					if prev <= hi && hi <= next {
+						hiI = i
+					}
+					if i == 0xffff {
+						break
+					}
 				}
-			}
-			if loi > 0 && loi != loI {
-				// info: fmt.Printf("Overwriting %s low index: %04x -> %04x\n", colrgba, loI, loi)
+				if loi > 0 && loi != loI {
+					// info: fmt.Printf("Overwriting %s low index: %04x -> %04x\n", colrgba, loI, loi)
+					loI = loi
+				}
+				if hii < 0xffff && hii != hiI {
+					// info: fmt.Printf("Overwriting %s high index: %04x -> %04x\n", colrgba, hiI, hii)
+					hiI = hii
+				}
+				if loI >= hiI {
+					return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
+				}
+			} else {
 				loI = loi
-			}
-			if hii < 0xffff && hii != hiI {
-				// info: fmt.Printf("Overwriting %s high index: %04x -> %04x\n", colrgba, hiI, hii)
 				hiI = hii
-			}
-			if loI >= hiI {
-				return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
 			}
 			mult := 65535.0 / float64(hiI-loI)
 			// info: fmt.Printf("histCum: %+v\n", histCum.str())

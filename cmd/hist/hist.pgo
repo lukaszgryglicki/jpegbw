@@ -260,6 +260,9 @@ func hist(args []string) error {
 	for k := 0; k < n; k++ {
 		f := k - mf2
 		t := k + mf2
+		if f == t {
+			t++
+		}
 		if f < 0 {
 			f = 0
 		}
