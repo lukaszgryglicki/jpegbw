@@ -7,11 +7,12 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io/ioutil"
-	"jpegbw"
 	"os"
 	"runtime"
 	"strconv"
 	"time"
+
+	"github.com/lukaszgryglicki/jpegbw"
 
 	yaml "gopkg.in/yaml.v2"
 )

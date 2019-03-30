@@ -1,4 +1,4 @@
 for f in `find . -iname "*.go"`
 do
-  echo ${f//\.go/\.pgo}
+  cp "$f" "${f//\.go/.pgo}"
 done

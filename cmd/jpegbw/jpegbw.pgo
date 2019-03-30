@@ -8,7 +8,6 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
-	"jpegbw"
 	"math"
 	"os"
 	"runtime"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lukaszgryglicki/jpegbw"
 )
 
 // images2BW: convert given images to bw: iname.ext -> bw_iname.ext, dir/iname.ext -> dir/bw_iname.ext
