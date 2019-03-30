@@ -21,6 +21,20 @@ type FileHist struct {
 	Fn      string       `yaml:"file_name"`
 }
 
+// HintData holds moving histogram data for a given file
+type HintData struct {
+	From   int        `yaml:"from"`
+	To     int        `yaml:"to"`
+	Curr   int        `yaml:"curr"`
+	Min    [4]uint16  `yaml:"min"`
+	Max    [4]uint16  `yaml:"max"`
+	LoPerc [4]float64 `yaml:"low_percent"`
+	HiPerc [4]float64 `yaml:"high_percent"`
+	LoIdx  [4]uint16  `yaml:"low_idx"`
+	HiIdx  [4]uint16  `yaml:"high_idx"`
+	Mult   [4]float64 `yaml:"mult"`
+}
+
 // WriteHist - writes histogram to file
 func (fh *FileHist) WriteHist() error {
 	fn := fh.Fn + ".hist"

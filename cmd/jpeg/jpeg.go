@@ -8,6 +8,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io/ioutil"
 	"math"
 	"os"
 	"runtime"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lukaszgryglicki/jpegbw"
+	yaml "gopkg.in/yaml.v2"
 )
 
 // images2RGBA: convert given images to bw: iname.ext -> co_iname.ext, dir/iname.ext -> dir/co_iname.ext
@@ -77,7 +79,9 @@ func images2RGBA(args []string) error {
 		ag      [4]float64
 		ab      [4]float64
 		alo     [4]float64
+		aloi    [4]uint16
 		ahi     [4]float64
+		ahii    [4]uint16
 		aga     [4]float64
 		agaB    [4]bool
 		acl     [4]int
@@ -131,6 +135,10 @@ func images2RGBA(args []string) error {
 			bhpow = true
 		}
 	}
+
+	// Hint mode
+	useHints := os.Getenv("HINT") != ""
+	hintRequired := os.Getenv("HINTREQ") != ""
 
 	// No alpha processing
 	noA := os.Getenv("NA") != ""
@@ -231,6 +239,20 @@ func images2RGBA(args []string) error {
 			lo = v
 		}
 
+		// LOI
+		loS = os.Getenv(colrgba + "LOI")
+		loi := uint16(0)
+		if loS != "" {
+			v, err := strconv.Atoi(loS)
+			if err != nil {
+				return err
+			}
+			if v < 1 || v > 0xffff {
+				return fmt.Errorf("LOI must be from 0001-FFFF range")
+			}
+			loi = uint16(v)
+		}
+
 		// HI
 		hiS := os.Getenv(colrgba + "HI")
 		hi := 0.0
@@ -249,6 +271,20 @@ func images2RGBA(args []string) error {
 			return fmt.Errorf("invalid lo-hi range: %f%% - %f%%", lo, hi)
 		}
 
+		// HII
+		hiS = os.Getenv(colrgba + "HII")
+		hii := uint16(0xffff)
+		if hiS != "" {
+			v, err := strconv.Atoi(hiS)
+			if err != nil {
+				return err
+			}
+			if v < 0 || v > 0xfffe {
+				return fmt.Errorf("HII must be from 0000-FFFE range")
+			}
+			hii = uint16(v)
+		}
+
 		// GA gamma
 		gaS := os.Getenv(colrgba + "GA")
 		ga := 1.0
@@ -265,14 +301,16 @@ func images2RGBA(args []string) error {
 		ag[colidx] = g
 		ab[colidx] = b
 		alo[colidx] = lo
+		aloi[colidx] = loi
 		acl[colidx] = cl
 		ahi[colidx] = hi
+		ahii[colidx] = hii
 		agaB[colidx] = gaB
 		aga[colidx] = ga
 
 		fmt.Printf(
-			"Final %s RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, quality: %d, gamma: (%v, %f), cache: %d, threads: %d, override: %v,%s,%s\n",
-			colrgba, fact, ar[colidx], ag[colidx], ab[colidx], alo[colidx], ahi[colidx],
+			"Final %s RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, idx range: %04x-%04x, quality: %d, gamma: (%v, %f), cache: %d, threads: %d, override: %v,%s,%s\n",
+			colrgba, fact, ar[colidx], ag[colidx], ab[colidx], alo[colidx], ahi[colidx], aloi[colidx], ahii[colidx],
 			jpegq, agaB[colidx], aga[colidx], acl[colidx], thrN, overB, overFrom, overTo,
 		)
 	}
@@ -298,6 +336,32 @@ func images2RGBA(args []string) error {
 
 		// Input
 		dtStartI := time.Now()
+
+		// Hints
+		var hint jpegbw.HintData
+		usedHint := false
+		if useHints {
+			data, err := ioutil.ReadFile(fn + ".hint")
+			if err != nil {
+				if hintRequired {
+					return err
+				}
+				fmt.Printf("Missing hint file: %s.hint\n", fn)
+			} else {
+				err = yaml.Unmarshal(data, &hint)
+				if err != nil {
+					if hintRequired {
+						return err
+					}
+					fmt.Printf("Invalid hint file: %s.hint\n", fn)
+				} else {
+					usedHint = true
+					// info: fmt.Printf("Hint: %+v\n", hint)
+				}
+			}
+		}
+
+		// Image
 		reader, err := os.Open(fn)
 		if err != nil {
 			return err
@@ -351,9 +415,17 @@ func images2RGBA(args []string) error {
 			g := ag[colidx]
 			b := ab[colidx]
 			lo := alo[colidx]
+			loi := aloi[colidx]
 			hi := ahi[colidx]
+			hii := ahii[colidx]
 			ga := aga[colidx]
 			gaB := agaB[colidx]
+
+			if useHints && usedHint {
+				loi = hint.LoIdx[colidx]
+				hii = hint.HiIdx[colidx]
+				// info: fmt.Printf("Using hint scale: %04x-%04x\n", loi, hii)
+			}
 
 			hist := make(jpegbw.IntHist)
 			minGs := uint16(0xffff)
@@ -400,6 +472,14 @@ func images2RGBA(args []string) error {
 				if i == 0xffff {
 					break
 				}
+			}
+			if loi > 0 && loi != loI {
+				// info: fmt.Printf("Overwriting %s low index: %04x -> %04x\n", colrgba, loI, loi)
+				loI = loi
+			}
+			if hii < 0xffff && hii != hiI {
+				// info: fmt.Printf("Overwriting %s high index: %04x -> %04x\n", colrgba, hiI, hii)
+				hiI = hii
 			}
 			if loI >= hiI {
 				return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
@@ -826,6 +906,8 @@ Environment variables:
 This program manipulates 4 channels R, G, B, A.
 When you see X replace it with R, G, B or A.
 NA - skip alpha calculation, alpha will be 1 everywhere
+HINT - use hints saved for every file "file.ext" - "file.ext.hint", if no hint is given warning is displayed
+HINTREQ - make hint file required
 Q - jpeg quality 1-100, will use library default if not specified
 XR - relative red usage for generating gray pixel, 1 if not specified
 XG - relative green usage for generating gray pixel, 1 if not specified
@@ -834,6 +916,8 @@ XB - relative blue usage for generating gray pixel, 1 if not specified
 R=0.2125 G=0.7154 B=0.0721 is a suggested configuration
 XLO - when calculating intensity range, discard values than are in this lower %, for example 3
 XHI - when calculating intensity range, discard values that are in this higher %, for example 3
+XLOI - when calculating intensity range, discard values than are lower than this (range is 0000-FFFF)
+XHII - when calculating intensity range, discard values that are higher than this (range is 0000-FFFF)
 XGA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)->(x,pow(x, GA)) mapping
 XF - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
 XC - function cache level (0-no cache, 1-1st arg caching, 2-1st and 2nd arg caching, ... 4 - 4 args caching)

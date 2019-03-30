@@ -17,20 +17,6 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-// hint holds moving histogram data for a given file
-type hintData struct {
-	From   int        `yaml:"from"`
-	To     int        `yaml:"to"`
-	Curr   int        `yaml:"curr"`
-	Min    [4]uint16  `yaml:"min"`
-	Max    [4]uint16  `yaml:"max"`
-	LoPerc [4]float64 `yaml:"low_percent"`
-	HiPerc [4]float64 `yaml:"high_percent"`
-	LoIdx  [4]uint16  `yaml:"low_idx"`
-	HiIdx  [4]uint16  `yaml:"high_idx"`
-	Mult   [4]float64 `yaml:"mult"`
-}
-
 func hist(args []string) error {
 	// Parse env
 	rgba := [4]string{"R", "G", "B", "A"}
@@ -282,7 +268,7 @@ func hist(args []string) error {
 			t = n
 		}
 		go func(ch chan error, k, f, t int) {
-			var hint hintData
+			var hint jpegbw.HintData
 			hint.From = f
 			hint.To = t
 			hint.Curr = k
