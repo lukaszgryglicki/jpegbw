@@ -260,7 +260,7 @@ func images2BW(args []string) error {
 		// Calculations
 		all := float64(x * y)
 		histCum := make(jpegbw.FloatHist)
-		sum := 0
+		sum := int64(0)
 		for i := uint16(0); true; i++ {
 			sum += hist[i]
 			histCum[i] = (float64(sum) * 100.0) / all

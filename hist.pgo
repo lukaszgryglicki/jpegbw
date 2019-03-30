@@ -9,7 +9,7 @@ import (
 )
 
 // IntHist holds uint16 -> int histogram
-type IntHist map[uint16]int
+type IntHist map[uint16]int64
 
 // FloatHist holds uint16 -> percent histogram (cumulative)
 type FloatHist map[uint16]float64

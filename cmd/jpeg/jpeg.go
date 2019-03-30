@@ -378,7 +378,7 @@ func images2RGBA(args []string) error {
 
 			// Calculations
 			histCum := make(jpegbw.FloatHist)
-			sum := 0
+			sum := int64(0)
 			for i := uint16(0); true; i++ {
 				sum += hist[i]
 				histCum[i] = (float64(sum) * 100.0) / all
@@ -411,7 +411,7 @@ func images2RGBA(args []string) error {
 			if inf > 0 {
 				b := 65535.0 / float64(x)
 				histScaled := make(jpegbw.IntHist)
-				maxHS := 0
+				maxHS := int64(0)
 				if bhpow {
 					for i := uint16(0); i < uint16(x); i++ {
 						ff := (float64(i) * b) / 65535.0
@@ -421,7 +421,7 @@ func images2RGBA(args []string) error {
 						if t == f {
 							t++
 						}
-						hv := 0
+						hv := int64(0)
 						for h := f; h < t; h++ {
 							hv += hist[h]
 						}
@@ -437,7 +437,7 @@ func images2RGBA(args []string) error {
 						if t == f {
 							t++
 						}
-						hv := 0
+						hv := int64(0)
 						for h := f; h < t; h++ {
 							hv += hist[h]
 						}
@@ -450,14 +450,14 @@ func images2RGBA(args []string) error {
 				fran := float64((hiI - loI) + 1)
 				b2 := fran / float64(x)
 				histScaled2 := make(jpegbw.IntHist)
-				maxHS2 := 0
+				maxHS2 := int64(0)
 				for i := uint16(0); i < uint16(x); i++ {
 					f := loI + uint16(float64(i)*b2)
 					t := uint16(float64(f) + b2)
 					if t == f {
 						t++
 					}
-					hv := 0
+					hv := int64(0)
 					for h := f; h < t; h++ {
 						hv += hist[h]
 					}
@@ -466,8 +466,8 @@ func images2RGBA(args []string) error {
 						maxHS2 = hv
 					}
 				}
-				prev := 0
-				next := 0
+				prev := int64(0)
+				next := int64(0)
 				prevI := uint16(0xffff)
 				for i := uint16(0); i < uint16(x); i++ {
 					v := histScaled[i]
@@ -485,7 +485,7 @@ func images2RGBA(args []string) error {
 							}
 						}
 						if prevI != 0xffff && nextJ != 0xffff {
-							histScaled[i] = prev + int((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
+							histScaled[i] = prev + int64((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
 						}
 					}
 				}
@@ -508,7 +508,7 @@ func images2RGBA(args []string) error {
 							}
 						}
 						if prevI != 0xffff && nextJ != 0xffff {
-							histScaled2[i] = prev + int((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
+							histScaled2[i] = prev + int64((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
 						}
 					}
 				}

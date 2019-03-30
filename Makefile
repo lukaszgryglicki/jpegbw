@@ -1,6 +1,6 @@
 GO_BIN_FILES=cmd/jpegbw/jpegbw.go cmd/gengo/gengo.go cmd/cmap/cmap.go cmd/f/f.go cmd/jpeg/jpeg.go cmd/hist/hist.go
 GO_LIB_FILES=fpar.go hist.go
-GO_BIN_CMDS=jpegbw/cmd/jpegbw jpegbw/cmd/gengo jpegbw/cmd/cmap jpegbw/cmd/f jpegbw/cmd/jpeg jpegbw/cmd/hist
+GO_BIN_CMDS=github.com/lukaszgryglicki/jpegbw/cmd/jpegbw github.com/lukaszgryglicki/jpegbw/cmd/gengo github.com/lukaszgryglicki/jpegbw/cmd/cmap github.com/lukaszgryglicki/jpegbw/cmd/f github.com/lukaszgryglicki/jpegbw/cmd/jpeg github.com/lukaszgryglicki/jpegbw/cmd/hist
 GO_ENV=CGO_ENABLED=1
 GO_BUILD=go build -ldflags '-s -w'
 #GO_BUILD=go build -ldflags '-s -w' -race

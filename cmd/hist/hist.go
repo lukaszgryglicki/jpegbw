@@ -202,7 +202,7 @@ func hist(args []string) error {
 
 				// Calculations
 				histCum := make(jpegbw.FloatHist)
-				sum := 0
+				sum := int64(0)
 				for i := uint16(0); true; i++ {
 					sum += hist[i]
 					histCum[i] = (float64(sum) * 100.0) / all
@@ -317,7 +317,7 @@ func hist(args []string) error {
 				}
 				// Calculations
 				histCum := make(jpegbw.FloatHist)
-				sum := 0
+				sum := int64(0)
 				for i := uint16(0); true; i++ {
 					sum += hist[i]
 					histCum[i] = (float64(sum) * 100.0) / all
