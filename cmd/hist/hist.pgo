@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -13,8 +14,6 @@ import (
 	"time"
 
 	"github.com/lukaszgryglicki/jpegbw"
-
-	yaml "gopkg.in/yaml.v2"
 )
 
 func hist(args []string) error {
@@ -339,12 +338,12 @@ func hist(args []string) error {
 			}
 			// Write hint
 			fn := args[k] + ".hint"
-			yamlBytes, err := yaml.Marshal(hint)
+			jsonBytes, err := json.Marshal(hint)
 			if err != nil {
 				ch <- err
 				return
 			}
-			err = ioutil.WriteFile(fn, yamlBytes, 0644)
+			err = ioutil.WriteFile(fn, jsonBytes, 0644)
 			ch <- err
 			return
 		}(ch, k, f, t)

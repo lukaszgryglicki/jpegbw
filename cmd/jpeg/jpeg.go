@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -18,7 +19,6 @@ import (
 	"time"
 
 	"github.com/lukaszgryglicki/jpegbw"
-	yaml "gopkg.in/yaml.v2"
 )
 
 // images2RGBA: convert given images to bw: iname.ext -> co_iname.ext, dir/iname.ext -> dir/co_iname.ext
@@ -348,7 +348,7 @@ func images2RGBA(args []string) error {
 				}
 				fmt.Printf("Missing hint file: %s.hint\n", fn)
 			} else {
-				err = yaml.Unmarshal(data, &hint)
+				err = json.Unmarshal(data, &hint)
 				if err != nil {
 					if hintRequired {
 						return err
