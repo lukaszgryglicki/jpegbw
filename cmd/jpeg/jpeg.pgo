@@ -616,7 +616,7 @@ func images2RGBA(args []string) error {
 					} else if j < y-(2*inf) {
 						// scale on the right: GS or GS, R, G, B
 						if einf {
-							g := (uint32(j) * uint32(ran)) / uint32(y-inf)
+							g := (uint32(j) * uint32(ran)) / uint32(y-2*inf)
 							d := g / uint32(ran4)
 							r := uint32(hiI) - ((g % uint32(ran4)) << 2)
 							switch d {
@@ -630,7 +630,7 @@ func images2RGBA(args []string) error {
 								return 0, 0, r, uint32(0xffff)
 							}
 						} else {
-							g := uint32(hiI) - ((uint32(j) * uint32(ran)) / uint32(y-inf))
+							g := uint32(hiI) - ((uint32(j) * uint32(ran)) / uint32(y-2*inf))
 							return g, g, g, uint32(0xffff)
 						}
 					}
