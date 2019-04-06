@@ -62,7 +62,7 @@ func images2BW(args []string) error {
 	useImag := os.Getenv("I") != ""
 
 	// ENV
-	// Quality
+	// JPEG Quality
 	jpegqStr := os.Getenv("Q")
 	jpegq := -1
 	if jpegqStr != "" {
@@ -74,6 +74,20 @@ func images2BW(args []string) error {
 			return fmt.Errorf("Q must be from 1-100 range")
 		}
 		jpegq = v
+	}
+
+	// PNG Quality
+	pngqStr := os.Getenv("PQ")
+	pngq := png.DefaultCompression
+	if pngqStr != "" {
+		v, err := strconv.Atoi(pngqStr)
+		if err != nil {
+			return err
+		}
+		if v < 0 || v > 3 {
+			return fmt.Errorf("PQ must be from 0-3 range")
+		}
+		pngq = png.CompressionLevel(-v)
 	}
 
 	// R red
@@ -432,7 +446,8 @@ func images2BW(args []string) error {
 		dtStartO := time.Now()
 		var ierr error
 		if strings.Contains(lfn, ".png") {
-			ierr = png.Encode(fi, target)
+			enc := png.Encoder{CompressionLevel: pngq}
+			ierr = enc.Encode(fi, target)
 		} else if strings.Contains(lfn, ".jpg") || strings.Contains(lfn, ".jpeg") {
 			if jpegq < 0 {
 				ierr = jpeg.Encode(fi, target, nil)
@@ -471,6 +486,7 @@ func main() {
 		helpStr := `
 Environment variables:
 Q - jpeg quality 1-100, will use library default if not specified
+PQ - png quality 0-3 (0 is default): 0=DefaultCompression, 1=NoCompression, 2=BestSpeed, 3=BestCompression
 R - relative red usage for generating gray pixel, 1 if not specified
 G - relative green usage for generating gray pixel, 1 if not specified
 B - relative blue usage for generating gray pixel, 1 if not specified

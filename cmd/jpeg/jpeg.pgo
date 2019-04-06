@@ -24,7 +24,7 @@ import (
 // images2RGBA: convert given images to bw: iname.ext -> co_iname.ext, dir/iname.ext -> dir/co_iname.ext
 // Other parameters are set via env variables (see main() function it describes all env params):
 func images2RGBA(args []string) error {
-	// Quality
+	// JPEG Quality
 	jpegqStr := os.Getenv("Q")
 	jpegq := -1
 	if jpegqStr != "" {
@@ -36,6 +36,20 @@ func images2RGBA(args []string) error {
 			return fmt.Errorf("Q must be from 1-100 range")
 		}
 		jpegq = v
+	}
+
+	// PNG Quality
+	pngqStr := os.Getenv("PQ")
+	pngq := png.DefaultCompression
+	if pngqStr != "" {
+		v, err := strconv.Atoi(pngqStr)
+		if err != nil {
+			return err
+		}
+		if v < 0 || v > 3 {
+			return fmt.Errorf("PQ must be from 0-3 range")
+		}
+		pngq = png.CompressionLevel(-v)
 	}
 
 	// Threads
@@ -142,6 +156,60 @@ func images2RGBA(args []string) error {
 
 	// No alpha processing
 	noA := os.Getenv("NA") != ""
+
+	// Grayscale output
+	ogs := os.Getenv("OGS") != ""
+	gsr := 1.0
+	gsg := 1.0
+	gsb := 1.0
+	if ogs {
+		// R red
+		rS := os.Getenv("GSR")
+		r := 1.0
+		if rS != "" {
+			v, err := strconv.ParseFloat(rS, 64)
+			if err != nil {
+				return err
+			}
+			r = v
+		}
+
+		// G green
+		gS := os.Getenv("GSG")
+		g := 1.0
+		if gS != "" {
+			v, err := strconv.ParseFloat(gS, 64)
+			if err != nil {
+				return err
+			}
+			g = v
+		}
+
+		// B blue
+		bS := os.Getenv("GSB")
+		b := 1.0
+		if bS != "" {
+			v, err := strconv.ParseFloat(bS, 64)
+			if err != nil {
+				return err
+			}
+			b = v
+		}
+		fact := r + g + b
+		if fact <= 0 {
+			r = 0.0
+			g = 0.0
+			b = 0.0
+		} else {
+			r /= fact
+			g /= fact
+			b /= fact
+		}
+		gsr = r
+		gsg = g
+		gsb = b
+		fmt.Printf("Enabling GS output: %f,%f,%f\n", gsr, gsg, gsb)
+	}
 
 	// Process colors
 	for colidx, colrgba := range rgba {
@@ -792,35 +860,53 @@ func images2RGBA(args []string) error {
 		}
 
 		// Final write to target
-		target := image.NewRGBA64(image.Rect(0, 0, x, y))
+		var (
+			target   *image.RGBA64
+			targetGS *image.Gray16
+		)
+		if ogs {
+			targetGS = image.NewGray16(image.Rect(0, 0, x, y))
+		} else {
+			target = image.NewRGBA64(image.Rect(0, 0, x, y))
+		}
 		dtStartF := time.Now()
 		che := make(chan error)
 		nThreads := 0
 		var fCalc func(chan error, int)
-		if noA {
+		if ogs {
 			fCalc = func(c chan error, i int) {
 				for j := 0; j < y; j++ {
 					px := pxdata[i][j]
-					//if i%100 == 0 && j%100 == 0 {
-					//	fmt.Printf("(%d,%d) --> %v\n", i, j, px)
-					//}
-					target.Set(i, j, color.RGBA64{px[0], px[1], px[2], 0xffff})
+					targetGS.Set(i, j, color.Gray16{uint16(float64(px[0])*gsr + float64(px[1])*gsg + float64(px[2])*gsb)})
 				}
 				c <- nil
 			}
 		} else {
-			fCalc = func(c chan error, i int) {
-				for j := 0; j < y; j++ {
-					px := pxdata[i][j]
-					//if i%100 == 0 && j%100 == 0 {
-					//	fmt.Printf("(%d,%d) --> %v\n", i, j, px)
-					//}
-					//px[0] = uint16((uint32(px[0]) * uint32(px[3])) >> 0x10)
-					//px[1] = uint16((uint32(px[1]) * uint32(px[3])) >> 0x10)
-					//px[2] = uint16((uint32(px[2]) * uint32(px[3])) >> 0x10)
-					target.Set(i, j, color.NRGBA64{px[0], px[1], px[2], px[3]})
+			if noA {
+				fCalc = func(c chan error, i int) {
+					for j := 0; j < y; j++ {
+						px := pxdata[i][j]
+						//if i%100 == 0 && j%100 == 0 {
+						//	fmt.Printf("(%d,%d) --> %v\n", i, j, px)
+						//}
+						target.Set(i, j, color.RGBA64{px[0], px[1], px[2], 0xffff})
+					}
+					c <- nil
 				}
-				c <- nil
+			} else {
+				fCalc = func(c chan error, i int) {
+					for j := 0; j < y; j++ {
+						px := pxdata[i][j]
+						//if i%100 == 0 && j%100 == 0 {
+						//	fmt.Printf("(%d,%d) --> %v\n", i, j, px)
+						//}
+						//px[0] = uint16((uint32(px[0]) * uint32(px[3])) >> 0x10)
+						//px[1] = uint16((uint32(px[1]) * uint32(px[3])) >> 0x10)
+						//px[2] = uint16((uint32(px[2]) * uint32(px[3])) >> 0x10)
+						target.Set(i, j, color.NRGBA64{px[0], px[1], px[2], px[3]})
+					}
+					c <- nil
+				}
 			}
 		}
 		for ii := 0; ii < x; ii++ {
@@ -867,17 +953,26 @@ func images2RGBA(args []string) error {
 
 		// Output write
 		dtStartO := time.Now()
-		var ierr error
+		var (
+			ierr error
+			t    image.Image
+		)
+		if ogs {
+			t = targetGS
+		} else {
+			t = target
+		}
 		if strings.Contains(lfn, ".png") {
-			ierr = png.Encode(fi, target)
+			enc := png.Encoder{CompressionLevel: pngq}
+			ierr = enc.Encode(fi, t)
 		} else if strings.Contains(lfn, ".jpg") || strings.Contains(lfn, ".jpeg") {
-			if jpegq < 0 {
-				ierr = jpeg.Encode(fi, target, nil)
-			} else {
-				ierr = jpeg.Encode(fi, target, &jpeg.Options{Quality: jpegq})
+			var jopts *jpeg.Options
+			if jpegq >= 0 {
+				jopts = &jpeg.Options{Quality: jpegq}
 			}
+			ierr = jpeg.Encode(fi, t, jopts)
 		} else if strings.Contains(lfn, ".gif") {
-			ierr = gif.Encode(fi, target, nil)
+			ierr = gif.Encode(fi, t, nil)
 		}
 		if ierr != nil {
 			_ = fi.Close()
@@ -911,9 +1006,15 @@ Environment variables:
 This program manipulates 4 channels R, G, B, A.
 When you see X replace it with R, G, B or A.
 NA - skip alpha calculation, alpha will be 1 everywhere
+OGS - create grayscale output
+GSR - when OGS output, use this amount of R to generate final GS pixel
+GSG - when OGS output, use this amount of G to generate final GS pixel
+GSB - when OGS output, use this amount of B to generate final GS pixel
+(GSR+GSG+GSB) when OGS output - will be normalized to sum to 1, so their sum must be positive
 HINT - use hints saved for every file "file.ext" - "file.ext.hint", if no hint is given warning is displayed
 HINTREQ - make hint file required
 Q - jpeg quality 1-100, will use library default if not specified
+PQ - png quality 0-3 (0 is default): 0=DefaultCompression, 1=NoCompression, 2=BestSpeed, 3=BestCompression
 XR - relative red usage for generating gray pixel, 1 if not specified
 XG - relative green usage for generating gray pixel, 1 if not specified
 XB - relative blue usage for generating gray pixel, 1 if not specified
