@@ -38,8 +38,10 @@ func hist(args []string) error {
 		if err != nil {
 			return err
 		}
-		if m < 1 || m > n {
-			return fmt.Errorf("MF must be from 1-%d range", n)
+		r := 2*n + 2
+		if m < 1 || m > r {
+			fmt.Printf("MF must be from 1-%d range, adjusting", r)
+			m = r
 		}
 		mf = m
 	}
