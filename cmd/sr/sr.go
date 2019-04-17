@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func srFrame(ch chan error, s, jpegq int, pngq png.CompressionLevel, gs bool, args []string) {
+func srFrame(ch chan error, s, jpegq int, pngq png.CompressionLevel, gs, inpl bool, args []string) {
 	var ma [][]*image.Image
 	for i := 0; i < s; i++ {
 		var t []*image.Image
@@ -106,11 +106,16 @@ func srFrame(ch chan error, s, jpegq int, pngq png.CompressionLevel, gs bool, ar
 	} else {
 		t = target
 	}
-	ary := strings.Split(args[0], "/")
-	lAry := len(ary)
-	last := ary[lAry-1]
-	ary[lAry-1] = "sr_" + last
-	ofn := strings.Join(ary, "/")
+	var ofn string
+	if inpl {
+		ofn = args[0]
+	} else {
+		ary := strings.Split(args[0], "/")
+		lAry := len(ary)
+		last := ary[lAry-1]
+		ary[lAry-1] = "sr_" + last
+		ofn = strings.Join(ary, "/")
+	}
 	fi, err := os.Create(ofn)
 	if err != nil {
 		ch <- err
@@ -187,6 +192,9 @@ func sr(scaleS string, args []string) error {
 	// Grayscale
 	gs := os.Getenv("GS") != ""
 
+	// In-place mode
+	inpl := os.Getenv("INPL") != ""
+
 	// Scale
 	scale, err := strconv.Atoi(scaleS)
 	if err != nil {
@@ -204,7 +212,7 @@ func sr(scaleS string, args []string) error {
 		if to > n {
 			break
 		}
-		go srFrame(ch, scale, jpegq, pngq, gs, args[i:to])
+		go srFrame(ch, scale, jpegq, pngq, gs, inpl, args[i:to])
 		nThreads++
 		if nThreads == thrN {
 			err := <-ch
@@ -240,6 +248,7 @@ Environment variables:
 Q - jpeg quality 1-100, will use library default if not specified
 PQ - png quality 0-3 (0 is default): 0=DefaultCompression, 1=NoCompression, 2=BestSpeed, 3=BestCompression
 GS - set grayscale mode
+INPL - set in-place mode (will overwrite input files)
 N - set number of CPUs to process data
 `
 		fmt.Printf("%s\n", helpStr)
