@@ -1,20 +1,152 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"math"
 	"os"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
-func srFrame(ch chan error, s, md, jpegq int, pngq png.CompressionLevel, gs, inpl bool, args []string) {
+func execCommand(debug int, output bool, cmdAndArgs []string, env map[string]string) (string, error) {
+	// Execution time
+	dtStart := time.Now()
+	// STDOUT pipe size
+	pipeSize := 0x100
+
+	// Command & arguments
+	command := cmdAndArgs[0]
+	arguments := cmdAndArgs[1:]
+	if debug > 0 {
+		var args []string
+		for _, arg := range cmdAndArgs {
+			argLen := len(arg)
+			if argLen > 0x200 {
+				arg = arg[0:0x100] + "..." + arg[argLen-0x100:argLen]
+			}
+			if strings.Contains(arg, " ") {
+				args = append(args, "'"+arg+"'")
+			} else {
+				args = append(args, arg)
+			}
+		}
+		fmt.Printf("%s\n", strings.Join(args, " "))
+	}
+	cmd := exec.Command(command, arguments...)
+
+	// Environment setup (if any)
+	if len(env) > 0 {
+		newEnv := os.Environ()
+		for key, value := range env {
+			newEnv = append(newEnv, key+"="+value)
+		}
+		cmd.Env = newEnv
+		if debug > 0 {
+			fmt.Printf("Environment Override: %+v\n", env)
+			if debug > 2 {
+				fmt.Printf("Full Environment: %+v\n", newEnv)
+			}
+		}
+	}
+
+	// Capture STDOUT (non buffered - all at once when command finishes), only used on error and when no buffered/piped version used
+	// Which means it is used on error when debug <= 1
+	// In debug > 1 mode, we're displaying STDOUT during execution, and storing results to 'outputStr'
+	// Capture STDERR (non buffered - all at once when command finishes)
+	var (
+		stdOut    bytes.Buffer
+		stdErr    bytes.Buffer
+		outputStr string
+	)
+	cmd.Stderr = &stdErr
+	if debug <= 1 {
+		cmd.Stdout = &stdOut
+	}
+
+	// Pipe command's STDOUT during execution (if debug > 1)
+	// Or just starts command when no STDOUT debug
+	if debug > 1 {
+		stdOutPipe, e := cmd.StdoutPipe()
+		if e != nil {
+			return "", e
+		}
+		e = cmd.Start()
+		if e != nil {
+			return "", e
+		}
+		buffer := make([]byte, pipeSize, pipeSize)
+		nBytes, e := stdOutPipe.Read(buffer)
+		for e == nil && nBytes > 0 {
+			fmt.Printf("%s", buffer[:nBytes])
+			outputStr += string(buffer[:nBytes])
+			nBytes, e = stdOutPipe.Read(buffer)
+		}
+		if e != io.EOF {
+			return "", e
+		}
+	} else {
+		e := cmd.Start()
+		if e != nil {
+			return "", e
+		}
+	}
+	// Wait for command to finish
+	err := cmd.Wait()
+
+	// If error - then output STDOUT, STDERR and error info
+	if err != nil {
+		if debug <= 1 {
+			outStr := stdOut.String()
+			if len(outStr) > 0 {
+				fmt.Printf("%v\n", outStr)
+			}
+		}
+		errStr := stdErr.String()
+		if len(errStr) > 0 {
+			fmt.Printf("STDERR:\n%v\n", errStr)
+		}
+		if err != nil {
+			return stdOut.String(), err
+		}
+	}
+
+	// If debug > 1 display STDERR contents as well (if any)
+	if debug > 1 {
+		errStr := stdErr.String()
+		if len(errStr) > 0 {
+			fmt.Printf("Errors:\n%v\n", errStr)
+		}
+	}
+	if debug > 0 {
+		info := strings.Join(cmdAndArgs, " ")
+		lenInfo := len(info)
+		if lenInfo > 0x280 {
+			info = info[0:0x140] + "..." + info[lenInfo-0x140:lenInfo]
+		}
+		dtEnd := time.Now()
+		fmt.Printf("%s: %+v\n", info, dtEnd.Sub(dtStart))
+	}
+	outStr := ""
+	if output {
+		if debug <= 1 {
+			outStr = stdOut.String()
+		} else {
+			outStr = outputStr
+		}
+	}
+	return outStr, nil
+}
+
+func srFrame(ch chan error, s, md, jpegq int, pngq png.CompressionLevel, gs bool, args []string) {
 	var ma [][]*image.Image
 	for i := 0; i < s; i++ {
 		var t []*image.Image
@@ -123,7 +255,7 @@ func srFrame(ch chan error, s, md, jpegq int, pngq png.CompressionLevel, gs, inp
 		//fmt.Printf("Final (%d,%d,%d) --> (%d,%d,%f)\n", im, si, sj, minI, minJ, minMetric)
 		motion[si][sj] = [2]int{minI, minJ}
 	}
-	fmt.Printf("%+v\n", motion)
+	// fmt.Printf("%+v\n", motion)
 	var (
 		target   *image.RGBA64
 		targetGS *image.Gray16
@@ -191,16 +323,11 @@ func srFrame(ch chan error, s, md, jpegq int, pngq png.CompressionLevel, gs, inp
 	} else {
 		t = target
 	}
-	var ofn string
-	if inpl {
-		ofn = args[0]
-	} else {
-		ary := strings.Split(args[0], "/")
-		lAry := len(ary)
-		last := ary[lAry-1]
-		ary[lAry-1] = "sr_" + last
-		ofn = strings.Join(ary, "/")
-	}
+	ary := strings.Split(args[0], "/")
+	lAry := len(ary)
+	last := ary[lAry-1]
+	ary[lAry-1] = "sr_" + last
+	ofn := strings.Join(ary, "/")
 	fi, err := os.Create(ofn)
 	if err != nil {
 		ch <- err
@@ -294,6 +421,9 @@ func sr(scaleS string, args []string) error {
 	// In-place mode
 	inpl := os.Getenv("INPL") != ""
 
+	// Pad mode (if not enough files, copy last full)
+	pad := os.Getenv("PAD") != ""
+
 	// Scale
 	scale, err := strconv.Atoi(scaleS)
 	if err != nil {
@@ -311,7 +441,7 @@ func sr(scaleS string, args []string) error {
 		if to > n {
 			break
 		}
-		go srFrame(ch, scale, md, jpegq, pngq, gs, inpl, args[i:to])
+		go srFrame(ch, scale, md, jpegq, pngq, gs, args[i:to])
 		nThreads++
 		if nThreads == thrN {
 			err := <-ch
@@ -326,6 +456,32 @@ func sr(scaleS string, args []string) error {
 		nThreads--
 		if err != nil {
 			return err
+		}
+	}
+	if pad {
+		for i := 0; i < n; i++ {
+			to := i + sscale
+			if to <= n {
+				continue
+			}
+			// fmt.Printf("cp %s -> %s\n", "sr_"+args[i-1], "sr_"+args[i])
+			_, err := execCommand(0, false, []string{"cp", "sr_" + args[i-1], "sr_" + args[i]}, nil)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if inpl {
+		for i := 0; i < n; i++ {
+			to := i + sscale
+			if to > n && !pad {
+				break
+			}
+			// fmt.Printf("mv %s -> %s\n", "sr_"+args[i], args[i])
+			_, err := execCommand(0, false, []string{"mv", "sr_" + args[i], args[i]}, nil)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -348,6 +504,7 @@ Q - jpeg quality 1-100, will use library default if not specified
 PQ - png quality 0-3 (0 is default): 0=DefaultCompression, 1=NoCompression, 2=BestSpeed, 3=BestCompression
 GS - set grayscale mode
 INPL - set in-place mode (will overwrite input files)
+PAD - pad mode: if not enough files, copy last full
 N - set number of CPUs to process data
 M - motion detect range araound given pixel, default 1, note that this means <1-p-1>-> 3^2 = 9 checks. (2*M+1)^2
 `
