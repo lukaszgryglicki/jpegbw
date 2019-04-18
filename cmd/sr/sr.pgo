@@ -6,6 +6,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -13,7 +14,7 @@ import (
 	"time"
 )
 
-func srFrame(ch chan error, s, jpegq int, pngq png.CompressionLevel, gs, inpl bool, args []string) {
+func srFrame(ch chan error, s, md, jpegq int, pngq png.CompressionLevel, gs, inpl bool, args []string) {
 	var ma [][]*image.Image
 	for i := 0; i < s; i++ {
 		var t []*image.Image
@@ -67,6 +68,62 @@ func srFrame(ch chan error, s, jpegq int, pngq png.CompressionLevel, gs, inpl bo
 			k++
 		}
 	}
+	// Detect motion
+	var motion [][][2]int
+	for i := 0; i < s; i++ {
+		var row [][2]int
+		for j := 0; j < s; j++ {
+			row = append(row, [2]int{0, 0})
+		}
+		motion = append(motion, row)
+	}
+	ss := s * s
+	for im := 1; im < ss; im++ {
+		si := im % s
+		sj := im / s
+		minI := 0
+		minJ := 0
+		// fmt.Printf("(%d,%d,%d)\n", im, si, sj)
+		minMetric := float64(1e13)
+		for mdi := -md; mdi <= md; mdi++ {
+			for mdj := -md; mdj <= md; mdj++ {
+				metric := 0.0
+				for i := 0; i < x; i++ {
+					ii := i + mdi
+					if ii < 0 {
+						ii = 0
+					}
+					if ii >= x {
+						ii = x - 1
+					}
+					for j := 0; j < y; j++ {
+						jj := j + mdj
+						if jj < 0 {
+							jj = 0
+						}
+						if jj >= y {
+							jj = y - 1
+						}
+						rr, rg, rb, _ := (*ma[0][0]).At(i, j).RGBA()
+						cr, cg, cb, _ := (*ma[si][sj]).At(ii, jj).RGBA()
+						r := rr + rg + rb
+						c := cr + cg + cb
+						metric += math.Abs(float64(r) - float64(c))
+					}
+				}
+				metric /= float64(x * y)
+				//fmt.Printf("(%d,%d) -> %f\n", mdi, mdj, metric)
+				if metric < minMetric {
+					minMetric = metric
+					minI = mdi
+					minJ = mdj
+				}
+			}
+		}
+		//fmt.Printf("Final (%d,%d,%d) --> (%d,%d,%f)\n", im, si, sj, minI, minJ, minMetric)
+		motion[si][sj] = [2]int{minI, minJ}
+	}
+	fmt.Printf("%+v\n", motion)
 	var (
 		target   *image.RGBA64
 		targetGS *image.Gray16
@@ -81,7 +138,21 @@ func srFrame(ch chan error, s, jpegq int, pngq png.CompressionLevel, gs, inpl bo
 			for j := 0; j < y; j++ {
 				for si := 0; si < s; si++ {
 					for sj := 0; sj < s; sj++ {
-						targetGS.Set(s*i+si, s*j+sj, (*ma[si][sj]).At(i, j))
+						ii := i + motion[si][sj][0]
+						if ii < 0 {
+							ii = 0
+						}
+						if ii >= x {
+							ii = x - 1
+						}
+						jj := j + motion[si][sj][1]
+						if jj < 0 {
+							jj = 0
+						}
+						if jj >= y {
+							jj = y - 1
+						}
+						targetGS.Set(s*i+si, s*j+sj, (*ma[si][sj]).At(ii, jj))
 					}
 				}
 			}
@@ -91,7 +162,21 @@ func srFrame(ch chan error, s, jpegq int, pngq png.CompressionLevel, gs, inpl bo
 			for j := 0; j < y; j++ {
 				for si := 0; si < s; si++ {
 					for sj := 0; sj < s; sj++ {
-						target.Set(s*i+si, s*j+sj, (*ma[si][sj]).At(i, j))
+						ii := i + motion[si][sj][0]
+						if ii < 0 {
+							ii = 0
+						}
+						if ii >= x {
+							ii = x - 1
+						}
+						jj := j + motion[si][sj][1]
+						if jj < 0 {
+							jj = 0
+						}
+						if jj >= y {
+							jj = y - 1
+						}
+						target.Set(s*i+si, s*j+sj, (*ma[si][sj]).At(ii, jj))
 					}
 				}
 			}
@@ -189,6 +274,20 @@ func sr(scaleS string, args []string) error {
 		pngq = png.CompressionLevel(-v)
 	}
 
+	// Motion detect area
+	mStr := os.Getenv("M")
+	md := 1
+	if mStr != "" {
+		v, err := strconv.Atoi(mStr)
+		if err != nil {
+			return err
+		}
+		if v < 0 || v > 32 {
+			return fmt.Errorf("M must be from 0-32 range")
+		}
+		md = v
+	}
+
 	// Grayscale
 	gs := os.Getenv("GS") != ""
 
@@ -212,7 +311,7 @@ func sr(scaleS string, args []string) error {
 		if to > n {
 			break
 		}
-		go srFrame(ch, scale, jpegq, pngq, gs, inpl, args[i:to])
+		go srFrame(ch, scale, md, jpegq, pngq, gs, inpl, args[i:to])
 		nThreads++
 		if nThreads == thrN {
 			err := <-ch
@@ -250,6 +349,7 @@ PQ - png quality 0-3 (0 is default): 0=DefaultCompression, 1=NoCompression, 2=Be
 GS - set grayscale mode
 INPL - set in-place mode (will overwrite input files)
 N - set number of CPUs to process data
+M - motion detect range araound given pixel, default 1, note that this means <1-p-1>-> 3^2 = 9 checks. (2*M+1)^2
 `
 		fmt.Printf("%s\n", helpStr)
 	}
