@@ -222,19 +222,13 @@ func srFrame(ch chan error, s, md, jpegq int, pngq png.CompressionLevel, gs bool
 				metric := 0.0
 				for i := 0; i < x; i++ {
 					ii := i + mdi
-					if ii < 0 {
-						ii = 0
-					}
-					if ii >= x {
-						ii = x - 1
+					if ii < 0 || ii >= x {
+						ii = i
 					}
 					for j := 0; j < y; j++ {
 						jj := j + mdj
-						if jj < 0 {
-							jj = 0
-						}
-						if jj >= y {
-							jj = y - 1
+						if jj < 0 || jj >= y {
+							jj = j
 						}
 						rr, rg, rb, _ := (*ma[0][0]).At(i, j).RGBA()
 						cr, cg, cb, _ := (*ma[si][sj]).At(ii, jj).RGBA()
@@ -271,18 +265,12 @@ func srFrame(ch chan error, s, md, jpegq int, pngq png.CompressionLevel, gs bool
 				for si := 0; si < s; si++ {
 					for sj := 0; sj < s; sj++ {
 						ii := i + motion[si][sj][0]
-						if ii < 0 {
-							ii = 0
-						}
-						if ii >= x {
-							ii = x - 1
+						if ii < 0 || ii >= x {
+							ii = i
 						}
 						jj := j + motion[si][sj][1]
-						if jj < 0 {
-							jj = 0
-						}
-						if jj >= y {
-							jj = y - 1
+						if jj < 0 || j >= y {
+							jj = j
 						}
 						targetGS.Set(s*i+si, s*j+sj, (*ma[si][sj]).At(ii, jj))
 					}
@@ -295,18 +283,12 @@ func srFrame(ch chan error, s, md, jpegq int, pngq png.CompressionLevel, gs bool
 				for si := 0; si < s; si++ {
 					for sj := 0; sj < s; sj++ {
 						ii := i + motion[si][sj][0]
-						if ii < 0 {
-							ii = 0
-						}
-						if ii >= x {
-							ii = x - 1
+						if ii < 0 || ii >= x {
+							ii = i
 						}
 						jj := j + motion[si][sj][1]
-						if jj < 0 {
-							jj = 0
-						}
-						if jj >= y {
-							jj = y - 1
+						if jj < 0 || j >= y {
+							jj = j
 						}
 						target.Set(s*i+si, s*j+sj, (*ma[si][sj]).At(ii, jj))
 					}
