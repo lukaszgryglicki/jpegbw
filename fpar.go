@@ -532,6 +532,10 @@ func (ctx *FparCtx) term() complex128 {
 			// debug: fmt.Printf("term: position: %s %f / ...\n", ctx.pos(), f)
 			f /= ctx.exponential()
 			// debug: fmt.Printf("term: position: %s -> %f\n", ctx.pos(), f)
+		case "%":
+			// debug: fmt.Printf("term: position: %s %f / ...\n", ctx.pos(), f)
+			f = complex(float64(int64(real(f))%int64(real(ctx.exponential()))), 0.0)
+			// debug: fmt.Printf("term: position: %s -> %f\n", ctx.pos(), f)
 		default:
 			return f
 		}
