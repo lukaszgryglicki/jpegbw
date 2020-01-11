@@ -102,6 +102,7 @@ func images2RGBA(args []string) error {
 		acont   [4]uint16
 		aedge   [4]uint16
 		asurf   [4]uint16
+		agcont  [4]bool
 	)
 
 	// Global contour setting
@@ -138,7 +139,7 @@ func images2RGBA(args []string) error {
 		if err != nil {
 			return err
 		}
-		if v > 3 {
+		if v < 0 || v > 3 {
 			return fmt.Errorf("EDGE must be from [0, 1, 2, 3]")
 		}
 		edge = uint16(v)
@@ -153,12 +154,29 @@ func images2RGBA(args []string) error {
 		if err != nil {
 			return err
 		}
-		if v > 3 {
+		if v < 0 || v > 3 {
 			return fmt.Errorf("SURF must be from [0, 1, 2, 3]")
 		}
 		surf = uint16(v)
 		bGlobSurf = true
 		asurf = [4]uint16{surf, surf, surf, surf}
+	}
+	bGlobGCont := false
+	gcont := false
+	gcontS := os.Getenv("GCONT")
+	if gcontS != "" {
+		v, err := strconv.Atoi(gcontS)
+		if err != nil {
+			return err
+		}
+		if v < 0 || v > 1 {
+			return fmt.Errorf("GCONT must be from [0, 1]")
+		}
+		if v == 1 {
+			gcont = true
+		}
+		bGlobGCont = true
+		agcont = [4]bool{gcont, gcont, gcont, gcont}
 	}
 
 	// Main library context
@@ -451,7 +469,7 @@ func images2RGBA(args []string) error {
 				if err != nil {
 					return err
 				}
-				if v > 3 {
+				if v < 0 || v > 3 {
 					return fmt.Errorf("EDGE must be from [0, 1, 2, 3]")
 				}
 				edge = uint16(v)
@@ -465,10 +483,26 @@ func images2RGBA(args []string) error {
 				if err != nil {
 					return err
 				}
-				if v > 3 {
+				if v < 0 || v > 3 {
 					return fmt.Errorf("SURF must be from [0, 1, 2, 3]")
 				}
 				surf = uint16(v)
+			}
+		}
+		gcont := false
+		if !bGlobGCont {
+			gcontS := os.Getenv(colrgba + "GCONT")
+			if gcontS != "" {
+				v, err := strconv.Atoi(gcontS)
+				if err != nil {
+					return err
+				}
+				if v < 0 || v > 1 {
+					return fmt.Errorf("GCONT must be from [0, 1]")
+				}
+				if v == 1 {
+					gcont = true
+				}
 			}
 		}
 		ar[colidx] = r
@@ -490,10 +524,13 @@ func images2RGBA(args []string) error {
 		if !bGlobSurf {
 			asurf[colidx] = surf
 		}
+		if !bGlobGCont {
+			agcont[colidx] = gcont
+		}
 
 		fmt.Printf(
-			"Final %s RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, idx range: %04x-%04x, cont: %d, surf/edge: %d/%d, quality: %d, gamma: (%v, %f), cache: %d, threads: %d, override: %v,%s,%s\n",
-			colrgba, fact, ar[colidx], ag[colidx], ab[colidx], alo[colidx], ahi[colidx], aloi[colidx], ahii[colidx], acont[colidx], asurf[colidx], aedge[colidx],
+			"Final %s RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, idx range: %04x-%04x, cont: %d/%v, surf/edge: %d/%d, quality: %d, gamma: (%v, %f), cache: %d, threads: %d, override: %v,%s,%s\n",
+			colrgba, fact, ar[colidx], ag[colidx], ab[colidx], alo[colidx], ahi[colidx], aloi[colidx], ahii[colidx], acont[colidx], agcont[colidx], asurf[colidx], aedge[colidx],
 			jpegq, agaB[colidx], aga[colidx], acl[colidx], thrN, overB, overFrom, overTo,
 		)
 	}
@@ -1006,6 +1043,18 @@ func images2RGBA(args []string) error {
 				}
 				surf := asurf[colidx]
 				edge := aedge[colidx]
+				gcont := agcont[colidx]
+
+				colidxF := colidx
+				colidxT := colidx
+				if gcont {
+					colidxF = 0
+					if noA {
+						colidxT = 2
+					} else {
+						colidxT = 3
+					}
+				}
 				che := make(chan error)
 				nThreads := 0
 				contourFunc := func(c chan error, i int) {
@@ -1021,22 +1070,24 @@ func images2RGBA(args []string) error {
 					if i2 >= x {
 						i2 = x - 1
 					}
-					di1 := tpxdata[i1][0][colidx]
-					di2 := tpxdata[i2][0][colidx]
-					dj1 := tpxdata[i][0][colidx]
-					dj2 := tpxdata[i][1][colidx]
 					co := false
-					for _, contour := range contours {
-						if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
-							if edge == 0 || edge == 1 {
-								pxdata[i][0][colidx] = uint16(0xffff * edge)
-							} else if edge == 2 {
-								pxdata[i][0][colidx] = tpxdata[i][0][colidx]
-							} else if edge == 3 {
-								pxdata[i][0][colidx] = uint16(0xffff) - tpxdata[i][0][colidx]
+					for ci := colidxF; ci <= colidxT; ci++ {
+						di1 := tpxdata[i1][0][ci]
+						di2 := tpxdata[i2][0][ci]
+						dj1 := tpxdata[i][0][ci]
+						dj2 := tpxdata[i][1][ci]
+						for _, contour := range contours {
+							if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
+								if edge == 0 || edge == 1 {
+									pxdata[i][0][colidx] = uint16(0xffff * edge)
+								} else if edge == 2 {
+									pxdata[i][0][colidx] = tpxdata[i][0][colidx]
+								} else if edge == 3 {
+									pxdata[i][0][colidx] = uint16(0xffff) - tpxdata[i][0][colidx]
+								}
+								co = true
+								break
 							}
-							co = true
-							break
 						}
 					}
 					if !co {
@@ -1049,22 +1100,24 @@ func images2RGBA(args []string) error {
 						}
 					}
 					yp := y - 1
-					di1 = tpxdata[i1][yp][colidx]
-					di2 = tpxdata[i2][yp][colidx]
-					dj1 = tpxdata[i][yp-1][colidx]
-					dj2 = tpxdata[i][yp][colidx]
 					co = false
-					for _, contour := range contours {
-						if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
-							if edge == 0 || edge == 1 {
-								pxdata[i][yp][colidx] = uint16(0xffff * edge)
-							} else if edge == 2 {
-								pxdata[i][yp][colidx] = tpxdata[i][yp][colidx]
-							} else if edge == 3 {
-								pxdata[i][yp][colidx] = uint16(0xffff) - tpxdata[i][yp][colidx]
+					for ci := colidxF; ci <= colidxT; ci++ {
+						di1 := tpxdata[i1][yp][ci]
+						di2 := tpxdata[i2][yp][ci]
+						dj1 := tpxdata[i][yp-1][ci]
+						dj2 := tpxdata[i][yp][ci]
+						for _, contour := range contours {
+							if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
+								if edge == 0 || edge == 1 {
+									pxdata[i][yp][colidx] = uint16(0xffff * edge)
+								} else if edge == 2 {
+									pxdata[i][yp][colidx] = tpxdata[i][yp][colidx]
+								} else if edge == 3 {
+									pxdata[i][yp][colidx] = uint16(0xffff) - tpxdata[i][yp][colidx]
+								}
+								co = true
+								break
 							}
-							co = true
-							break
 						}
 					}
 					if !co {
@@ -1080,21 +1133,23 @@ func images2RGBA(args []string) error {
 					for j := 1; j < yp; j++ {
 						j1 := j - 1
 						j2 := j + 1
-						di1 = tpxdata[i1][j][colidx]
-						di2 = tpxdata[i2][j][colidx]
-						dj1 = tpxdata[i][j1][colidx]
-						dj2 = tpxdata[i][j2][colidx]
 						co = false
-						for _, contour := range contours {
-							if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
-								if edge == 0 || edge == 1 {
-									pxdata[i][j][colidx] = uint16(0xffff * edge)
-								} else if edge == 2 {
-									pxdata[i][j][colidx] = tpxdata[i][j][colidx]
-								} else if edge == 3 {
-									pxdata[i][j][colidx] = uint16(0xffff) - tpxdata[i][j][colidx]
+						for ci := colidxF; ci <= colidxT; ci++ {
+							di1 := tpxdata[i1][j][ci]
+							di2 := tpxdata[i2][j][ci]
+							dj1 := tpxdata[i][j1][ci]
+							dj2 := tpxdata[i][j2][ci]
+							for _, contour := range contours {
+								if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
+									if edge == 0 || edge == 1 {
+										pxdata[i][j][colidx] = uint16(0xffff * edge)
+									} else if edge == 2 {
+										pxdata[i][j][colidx] = tpxdata[i][j][colidx]
+									} else if edge == 3 {
+										pxdata[i][j][colidx] = uint16(0xffff) - tpxdata[i][j][colidx]
+									}
+									co = true
 								}
-								co = true
 							}
 						}
 						if !co {
@@ -1303,7 +1358,9 @@ XCONT - hanlde countour lines, RCONT=10 will draw 10 countour lines for red colo
 CONT - set countours to the same value for all R, G, B, A channels
 EDGE - in countour algorithm, set edge mode: 0, 1, 2 (original), 3 (invert)
 SURF - in countour algorithm, set surface (non-edge) mode: 0, 1, 2 (original), 3 (invert)
-XEDGE, XSURF - set per color EDGE/SURF params (unless global specified)
+GCONT - set global contours mode, if set contour is detected when R, G, B or A detects contour
+XGCONT - set global contour for one color say RGCONT=1 (red will detect contour when R, G, B, A has contour)
+XEDGE, XSURF, XGCONT - set per color EDGE/SURF/GCONT params (unless global specified)
 XF - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
 XC - function cache level (0-no cache, 1-1st arg caching, 2-1st and 2nd arg caching, ... 4 - 4 args caching)
 LIB - if F is used and F calls external functions, thery need to be loaded for this C library
