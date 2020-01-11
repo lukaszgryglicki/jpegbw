@@ -99,7 +99,26 @@ func images2RGBA(args []string) error {
 		aga     [4]float64
 		agaB    [4]bool
 		acl     [4]int
+		acont   [4]uint16
 	)
+
+	bGlobCont := false
+	conti := uint16(0)
+	contS := os.Getenv("CONT")
+	if contS != "" {
+		v, err := strconv.Atoi(contS)
+		if err != nil {
+			return err
+		}
+		if v < 1 || v > 0x3fff {
+			return fmt.Errorf("CONT must be from 0001-3FFF range")
+		}
+		conti = uint16(v)
+	}
+	if conti > 0 {
+		bGlobCont = true
+		acont = [4]uint16{conti, conti, conti, conti}
+	}
 
 	// Main library context
 	var mfctx jpegbw.FparCtx
@@ -365,6 +384,22 @@ func images2RGBA(args []string) error {
 			ga = v
 			gaB = true
 		}
+
+		// CONT
+		conti := uint16(0)
+		if !bGlobCont {
+			contS := os.Getenv(colrgba + "CONT")
+			if contS != "" {
+				v, err := strconv.Atoi(contS)
+				if err != nil {
+					return err
+				}
+				if v < 1 || v > 0x3fff {
+					return fmt.Errorf("CONT must be from 0001-3FFF range")
+				}
+				conti = uint16(v)
+			}
+		}
 		ar[colidx] = r
 		ag[colidx] = g
 		ab[colidx] = b
@@ -375,10 +410,13 @@ func images2RGBA(args []string) error {
 		ahii[colidx] = hii
 		agaB[colidx] = gaB
 		aga[colidx] = ga
+		if !bGlobCont {
+			acont[colidx] = conti
+		}
 
 		fmt.Printf(
-			"Final %s RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, idx range: %04x-%04x, quality: %d, gamma: (%v, %f), cache: %d, threads: %d, override: %v,%s,%s\n",
-			colrgba, fact, ar[colidx], ag[colidx], ab[colidx], alo[colidx], ahi[colidx], aloi[colidx], ahii[colidx],
+			"Final %s RGB multiplier: %f(%f, %f, %f), range %f%% - %f%%, idx range: %04x-%04x, cont: %d, quality: %d, gamma: (%v, %f), cache: %d, threads: %d, override: %v,%s,%s\n",
+			colrgba, fact, ar[colidx], ag[colidx], ab[colidx], alo[colidx], ahi[colidx], aloi[colidx], ahii[colidx], acont[colidx],
 			jpegq, agaB[colidx], aga[colidx], acl[colidx], thrN, overB, overFrom, overTo,
 		)
 	}
@@ -859,6 +897,126 @@ func images2RGBA(args []string) error {
 			timeF += dtEndF.Sub(dtStartF)
 		}
 
+		// Hanlde contours algorithm
+		contB := false
+		for colidx := range rgba {
+			if noA && colidx == 3 {
+				continue
+			}
+			cont := acont[colidx]
+			if cont > 0 {
+				contB = true
+				break
+			}
+		}
+		if contB {
+			dtContStart := time.Now()
+			var tpxdata [][][4]uint16
+			for i := 0; i < x; i++ {
+				tpxdata = append(tpxdata, [][4]uint16{})
+				for j := 0; j < y; j++ {
+					d := pxdata[i][j]
+					tpxdata[i] = append(tpxdata[i], [4]uint16{d[0], d[1], d[2], d[3]})
+				}
+			}
+			for colidx := range rgba {
+				if noA && colidx == 3 {
+					continue
+				}
+				cont := acont[colidx] + 1
+				if cont < 2 {
+					continue
+				}
+				che := make(chan error)
+				nThreads := 0
+				contourFunc := func(c chan error, i int) {
+					contours := []uint16{}
+					for t := uint16(1); t < cont; t++ {
+						contours = append(contours, uint16((uint32(t)*uint32(0xffff))/uint32(cont)))
+					}
+					i1 := i - 1
+					i2 := i + 1
+					if i1 < 0 {
+						i1 = 0
+					}
+					if i2 >= x {
+						i2 = x - 1
+					}
+					di1 := tpxdata[i1][0][colidx]
+					di2 := tpxdata[i2][0][colidx]
+					dj1 := tpxdata[i][0][colidx]
+					dj2 := tpxdata[i][1][colidx]
+					co := false
+					for _, contour := range contours {
+						if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
+							pxdata[i][0][colidx] = uint16(0xffff)
+							co = true
+							break
+						}
+					}
+					if !co {
+						pxdata[i][0][colidx] = uint16(0)
+					}
+					yp := y - 1
+					di1 = tpxdata[i1][yp][colidx]
+					di2 = tpxdata[i2][yp][colidx]
+					dj1 = tpxdata[i][yp-1][colidx]
+					dj2 = tpxdata[i][yp][colidx]
+					co = false
+					for _, contour := range contours {
+						if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
+							pxdata[i][yp][colidx] = uint16(0xffff)
+							co = true
+							break
+						}
+					}
+					if !co {
+						pxdata[i][yp][colidx] = uint16(0)
+					}
+					for j := 1; j < yp; j++ {
+						j1 := j - 1
+						j2 := j + 1
+						di1 = tpxdata[i1][j][colidx]
+						di2 = tpxdata[i2][j][colidx]
+						dj1 = tpxdata[i][j1][colidx]
+						dj2 = tpxdata[i][j2][colidx]
+						co = false
+						for _, contour := range contours {
+							if (di1 < contour && di2 >= contour) || (dj1 < contour && dj2 >= contour) || (di1 > contour && di2 <= contour) || (dj1 > contour && dj2 <= contour) {
+								pxdata[i][j][colidx] = uint16(0xffff)
+								co = true
+							}
+						}
+						if !co {
+							pxdata[i][j][colidx] = uint16(0)
+						}
+					}
+					c <- nil
+				}
+				for ii := 0; ii < x; ii++ {
+					go contourFunc(che, ii)
+					nThreads++
+					if nThreads == thrN {
+						e := <-che
+						if e != nil {
+							return e
+						}
+						nThreads--
+					}
+				}
+				for nThreads > 0 {
+					e := <-che
+					if e != nil {
+						return e
+					}
+					nThreads--
+				}
+			}
+			dtContEnd := time.Now()
+			contTime := dtContEnd.Sub(dtContStart)
+			fmt.Printf(" contours (%+v)...", contTime)
+		}
+
 		// Final write to target
 		var (
 			target   *image.RGBA64
@@ -1025,6 +1183,8 @@ XHI - when calculating intensity range, discard values that are in this higher %
 XLOI - when calculating intensity range, discard values than are lower than this (range is 0000-FFFF)
 XHII - when calculating intensity range, discard values that are higher than this (range is 0000-FFFF)
 XGA - gamma default 1, which uses straight line (0,0) -> (1,1), if set uses (x,y)->(x,pow(x, GA)) mapping
+XCONT - hanlde countour lines, RCONT=10 will draw 10 countour lines for red color
+CONT - set countours to the same value for all R, G, B, A channels
 XF - function to apply on final 0-1 range, for example "sin(x1*2)+cos(x1*3)"
 XC - function cache level (0-no cache, 1-1st arg caching, 2-1st and 2nd arg caching, ... 4 - 4 args caching)
 LIB - if F is used and F calls external functions, thery need to be loaded for this C library
