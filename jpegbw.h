@@ -11,3 +11,6 @@ double complex gsrainbowb(double complex arg);
 double complex gsrainbowre(double complex arg, double complex delta);
 double complex gsrainbowge(double complex arg, double complex delta);
 double complex gsrainbowbe(double complex arg, double complex delta);
+double complex gsr(double complex arg, double complex gs);
+double complex gsg(double complex arg, double complex gs);
+double complex gsb(double complex arg, double complex gs);

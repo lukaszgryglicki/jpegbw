@@ -143,3 +143,46 @@ double complex gsrainbowbe(double complex arg, double complex delta) {
     return (double complex)0.;
   }
 }
+
+double complex gsr(double complex arg, double complex gs) {
+  double x = creal(arg);
+  double g = creal(gs);
+  if (x >= 0. && x < g) {
+    return (double complex)(1. - x / g);
+  } else if (x >= 1. - g && x <= 1.) {
+    return (double complex)((1. - x) / g);
+  } else if (x < 0. || x > 1.) {
+    return (double complex)0.;
+  } else {
+    return gsrainbowr((double complex)((x - g)/(1.-2.*g)));
+  }
+}
+
+double complex gsg(double complex arg, double complex gs) {
+  double x = creal(arg);
+  double g = creal(gs);
+  if (x >= 0. && x < g) {
+    return (double complex)(1. - x / g);
+  } else if (x >= 1. - g && x <= 1.) {
+    return (double complex)((1. - x) / g);
+  } else if (x < 0. || x > 1.) {
+    return (double complex)0.;
+  } else {
+    return gsrainbowg((double complex)((x - g)/(1.-2.*g)));
+  }
+}
+
+double complex gsb(double complex arg, double complex gs) {
+  double x = creal(arg);
+  double g = creal(gs);
+  if (x >= 0. && x < g) {
+    return (double complex)(1. - x / g);
+  } else if (x >= 1. - g && x <= 1.) {
+    return (double complex)((1. - x) / g);
+  } else if (x < 0. || x > 1.) {
+    return (double complex)0.;
+  } else {
+    return gsrainbowb((double complex)((x - g)/(1.-2.*g)));
+  }
+}
+
