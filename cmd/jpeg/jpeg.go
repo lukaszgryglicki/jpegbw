@@ -202,7 +202,7 @@ func images2RGBA(args []string) error {
 		defer func() { mfctx.Tidy() }()
 	}
 
-	// Additional in-image  info: R,G,B,Gs scale to the right and RGB histogram on the bottom
+	// Additional in-image info: R,G,B,G scale to the right and RGB histogram on the bottom
 	einf := os.Getenv("EINF") != ""
 	infS := os.Getenv("INF")
 	inf := 0
@@ -542,7 +542,10 @@ func images2RGBA(args []string) error {
 	flush := bufio.NewWriter(os.Stdout)
 
 	// Function extracting image data
-	var getPixelFunc func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32)
+	var (
+		getPixelFunc    func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32)
+		getPixelFuncAry [4]func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32)
+	)
 	if inf <= 0 {
 		getPixelFunc = func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32) {
 			return (*img).At(i, j).RGBA()
@@ -672,6 +675,9 @@ func images2RGBA(args []string) error {
 				ga := aga[colidx]
 				gaB := agaB[colidx]
 				if pass == 0 {
+					if inf <= 0 {
+						getPixelFuncAry[colidx] = getPixelFunc
+					}
 					lo := alo[colidx]
 					loi := aloi[colidx]
 					hi := ahi[colidx]
@@ -906,6 +912,7 @@ func images2RGBA(args []string) error {
 							}
 							return g, g, g, uint32(0xffff)
 						}
+						getPixelFuncAry[colidx] = getPixelFunc
 					}
 
 					dtEndH := time.Now()
@@ -924,6 +931,7 @@ func images2RGBA(args []string) error {
 						loI = acmloI
 						hiI = acmhiI
 						mult = acmmult
+						getPixelFunc = getPixelFuncAry[colidx]
 					}
 					che := make(chan error)
 					nThreads := 0
