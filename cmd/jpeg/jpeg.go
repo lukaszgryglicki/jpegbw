@@ -235,6 +235,9 @@ func images2RGBA(args []string) error {
 	// No alpha processing
 	noA := os.Getenv("NA") != ""
 
+	// All colors mult (will keep smallest low index, biggest high index and calculate mult accoring to that)
+	acm := os.Getenv("ACM") != ""
+
 	// Grayscale output
 	ogs := os.Getenv("OGS") != ""
 	gsr := 1.0
@@ -627,388 +630,432 @@ func images2RGBA(args []string) error {
 			timeF time.Duration
 			timeH time.Duration
 		)
-		for colidx, colrgba := range rgba {
-			if noA && colidx == 3 {
-				continue
+		passes := 1
+		if acm {
+			passes = 2
+		}
+		var (
+			loIs    []uint16
+			hiIs    []uint16
+			mults   []float64
+			acmloI  uint16
+			acmhiI  uint16
+			acmmult float64
+		)
+		for pass := 0; pass < passes; pass++ {
+			if pass == 1 {
+				acmloI = uint16(0xffff)
+				for ci := range loIs {
+					if loIs[ci] < acmloI {
+						acmloI = loIs[ci]
+					}
+					if hiIs[ci] > acmhiI {
+						acmhiI = hiIs[ci]
+					}
+				}
+				acmmult = 65535.0 / float64(acmhiI-acmloI)
+				fmt.Printf(" ACM int: (%d, %d) mult: %f...", acmloI, acmhiI, acmmult)
+				_ = flush.Flush()
 			}
-			r := ar[colidx]
-			g := ag[colidx]
-			b := ab[colidx]
-			lo := alo[colidx]
-			loi := aloi[colidx]
-			hi := ahi[colidx]
-			hii := ahii[colidx]
-			ga := aga[colidx]
-			gaB := agaB[colidx]
+			for colidx, colrgba := range rgba {
+				if noA && colidx == 3 {
+					continue
+				}
+				var (
+					loI  uint16
+					hiI  uint16
+					mult float64
+				)
+				r := ar[colidx]
+				g := ag[colidx]
+				b := ab[colidx]
+				ga := aga[colidx]
+				gaB := agaB[colidx]
+				if pass == 0 {
+					lo := alo[colidx]
+					loi := aloi[colidx]
+					hi := ahi[colidx]
+					hii := ahii[colidx]
 
-			if useHints && usedHint {
-				loi = hint.LoIdx[colidx]
-				hii = hint.HiIdx[colidx]
-				// info: fmt.Printf("Using hint scale: %04x-%04x\n", loi, hii)
-			}
+					if useHints && usedHint {
+						loi = hint.LoIdx[colidx]
+						hii = hint.HiIdx[colidx]
+						// info: fmt.Printf("Using hint scale: %04x-%04x\n", loi, hii)
+					}
 
-			hist := make(jpegbw.IntHist)
-			minGs := uint16(0xffff)
-			maxGs := uint16(0)
+					hist := make(jpegbw.IntHist)
+					minGs := uint16(0xffff)
+					maxGs := uint16(0)
 
-			dtStartH := time.Now()
-			loI := uint16(0)
-			hiI := uint16(0)
-			if inf > 0 || loi == 0 || hii == 0xffff {
-				for i := 0; i < xo; i++ {
-					for j := 0; j < yo; j++ {
-						pr, pg, pb, _ := m.At(i, j).RGBA()
-						// debug2: fmt.Printf("(%d,%d,%d)\n", pr, pg, pb)
-						gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
-						if gs < minGs {
-							minGs = gs
+					dtStartH := time.Now()
+					if inf > 0 || loi == 0 || hii == 0xffff {
+						for i := 0; i < xo; i++ {
+							for j := 0; j < yo; j++ {
+								pr, pg, pb, _ := m.At(i, j).RGBA()
+								// debug2: fmt.Printf("(%d,%d,%d)\n", pr, pg, pb)
+								gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
+								if gs < minGs {
+									minGs = gs
+								}
+								if gs > maxGs {
+									maxGs = gs
+								}
+								hist[gs]++
+							}
 						}
-						if gs > maxGs {
-							maxGs = gs
-						}
-						hist[gs]++
-					}
-				}
-				// info: fmt.Printf("hist: %+v\n", hist.str())
+						// info: fmt.Printf("hist: %+v\n", hist.str())
 
-				// Calculations
-				histCum := make(jpegbw.FloatHist)
-				sum := int64(0)
-				for i := uint16(0); true; i++ {
-					sum += hist[i]
-					histCum[i] = (float64(sum) * 100.0) / all
-					if i == 0xffff {
-						break
-					}
-				}
-				for i := uint16(1); true; i++ {
-					prev := histCum[i-1]
-					next := histCum[i]
-					if loI == 0 && prev <= lo && lo <= next {
-						loI = i
-					}
-					if prev <= hi && hi <= next {
-						hiI = i
-					}
-					if i == 0xffff {
-						break
-					}
-				}
-				if loi > 0 && loi != loI {
-					// info: fmt.Printf("Overwriting %s low index: %04x -> %04x\n", colrgba, loI, loi)
-					loI = loi
-				}
-				if hii < 0xffff && hii != hiI {
-					// info: fmt.Printf("Overwriting %s high index: %04x -> %04x\n", colrgba, hiI, hii)
-					hiI = hii
-				}
-				if loI >= hiI {
-					return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
-				}
-			} else {
-				loI = loi
-				hiI = hii
-			}
-			mult := 65535.0 / float64(hiI-loI)
-			// info: fmt.Printf("histCum: %+v\n", histCum.str())
-
-			// In INF mode we need histogramScaled context
-			if inf > 0 {
-				b := 65535.0 / float64(x)
-				histScaled := make(jpegbw.IntHist)
-				maxHS := int64(0)
-				if bhpow {
-					for i := uint16(0); i < uint16(x); i++ {
-						ff := (float64(i) * b) / 65535.0
-						f := uint16(math.Pow(ff, shpow) * 65535.0)
-						tf := (float64(i+1) * b) / 65535.0
-						t := uint16(math.Pow(tf, shpow) * 65535.0)
-						if t == f {
-							t++
-						}
-						hv := int64(0)
-						for h := f; h < t; h++ {
-							hv += hist[h]
-						}
-						histScaled[i] = hv
-						if hv > maxHS {
-							maxHS = hv
-						}
-					}
-				} else {
-					for i := uint16(0); i < uint16(x); i++ {
-						f := uint16(float64(i) * b)
-						t := uint16(float64(i+1) * b)
-						if t == f {
-							t++
-						}
-						hv := int64(0)
-						for h := f; h < t; h++ {
-							hv += hist[h]
-						}
-						histScaled[i] = hv
-						if hv > maxHS {
-							maxHS = hv
-						}
-					}
-				}
-				fran := float64((hiI - loI) + 1)
-				b2 := fran / float64(x)
-				histScaled2 := make(jpegbw.IntHist)
-				maxHS2 := int64(0)
-				for i := uint16(0); i < uint16(x); i++ {
-					f := loI + uint16(float64(i)*b2)
-					t := uint16(float64(f) + b2)
-					if t == f {
-						t++
-					}
-					hv := int64(0)
-					for h := f; h < t; h++ {
-						hv += hist[h]
-					}
-					histScaled2[i] = hv
-					if hv > maxHS2 {
-						maxHS2 = hv
-					}
-				}
-				prev := int64(0)
-				next := int64(0)
-				prevI := uint16(0xffff)
-				for i := uint16(0); i < uint16(x); i++ {
-					v := histScaled[i]
-					if v > 0 {
-						prev = v
-						prevI = i
-					} else {
-						nextJ := uint16(0xffff)
-						for j := i + 1; j < uint16(x); j++ {
-							w := histScaled[j]
-							if w > 0 {
-								next = w
-								nextJ = j
+						// Calculations
+						histCum := make(jpegbw.FloatHist)
+						sum := int64(0)
+						for i := uint16(0); true; i++ {
+							sum += hist[i]
+							histCum[i] = (float64(sum) * 100.0) / all
+							if i == 0xffff {
 								break
 							}
 						}
-						if prevI != 0xffff && nextJ != 0xffff {
-							histScaled[i] = prev + int64((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
-						}
-					}
-				}
-				prev = 0
-				next = 0
-				prevI = uint16(0xffff)
-				for i := uint16(0); i < uint16(x); i++ {
-					v := histScaled2[i]
-					if v > 0 {
-						prev = v
-						prevI = i
-					} else {
-						nextJ := uint16(0xffff)
-						for j := i + 1; j < uint16(x); j++ {
-							w := histScaled2[j]
-							if w > 0 {
-								next = w
-								nextJ = j
+						for i := uint16(1); true; i++ {
+							prev := histCum[i-1]
+							next := histCum[i]
+							if loI == 0 && prev <= lo && lo <= next {
+								loI = i
+							}
+							if prev <= hi && hi <= next {
+								hiI = i
+							}
+							if i == 0xffff {
 								break
 							}
 						}
-						if prevI != 0xffff && nextJ != 0xffff {
-							histScaled2[i] = prev + int64((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
+						if loi > 0 && loi != loI {
+							// info: fmt.Printf("Overwriting %s low index: %04x -> %04x\n", colrgba, loI, loi)
+							loI = loi
 						}
+						if hii < 0xffff && hii != hiI {
+							// info: fmt.Printf("Overwriting %s high index: %04x -> %04x\n", colrgba, hiI, hii)
+							hiI = hii
+						}
+						if loI >= hiI {
+							return fmt.Errorf("calculated integer range is empty: %d-%d", loI, hiI)
+						}
+					} else {
+						loI = loi
+						hiI = hii
 					}
-				}
-				maxHSF := float64(maxHS)
-				maxHSF2 := float64(maxHS2)
-				finf := float64(inf * 2)
-				// debug: fmt.Printf("histScaled: %+v\n", histScaled.str())
-				ran := (hiI - loI) + 1
-				ran4 := (ran + 1) / 4
-				if ran == 0 {
-					ran = 0xffff
-				}
-				if ran4 == 0 {
-					ran4 = 0x4000
-				}
-				getPixelFunc = func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32) {
-					if i < x-inf && j < y-(2*inf) {
-						// normal pixel
-						return (*img).At(i, j).RGBA()
-					} else if j < y-(2*inf) {
-						// scale on the right: GS or GS, R, G, B
-						if einf {
-							g := (uint32(j) * uint32(ran)) / uint32(y-2*inf)
-							d := g / uint32(ran4)
-							r := uint32(hiI) - ((g % uint32(ran4)) << 2)
-							switch d {
-							case 0:
-								return r, r, r, uint32(0xffff)
-							case 1:
-								return r, 0, 0, uint32(0xffff)
-							case 2:
-								return 0, r, 0, uint32(0xffff)
-							default:
-								return 0, 0, r, uint32(0xffff)
+					mult = 65535.0 / float64(hiI-loI)
+					// info: fmt.Printf("histCum: %+v\n", histCum.str())
+
+					// In INF mode we need histogramScaled context
+					if inf > 0 {
+						b := 65535.0 / float64(x)
+						histScaled := make(jpegbw.IntHist)
+						maxHS := int64(0)
+						if bhpow {
+							for i := uint16(0); i < uint16(x); i++ {
+								ff := (float64(i) * b) / 65535.0
+								f := uint16(math.Pow(ff, shpow) * 65535.0)
+								tf := (float64(i+1) * b) / 65535.0
+								t := uint16(math.Pow(tf, shpow) * 65535.0)
+								if t == f {
+									t++
+								}
+								hv := int64(0)
+								for h := f; h < t; h++ {
+									hv += hist[h]
+								}
+								histScaled[i] = hv
+								if hv > maxHS {
+									maxHS = hv
+								}
 							}
 						} else {
-							g := uint32(hiI) - ((uint32(j) * uint32(ran)) / uint32(y-2*inf))
+							for i := uint16(0); i < uint16(x); i++ {
+								f := uint16(float64(i) * b)
+								t := uint16(float64(i+1) * b)
+								if t == f {
+									t++
+								}
+								hv := int64(0)
+								for h := f; h < t; h++ {
+									hv += hist[h]
+								}
+								histScaled[i] = hv
+								if hv > maxHS {
+									maxHS = hv
+								}
+							}
+						}
+						fran := float64((hiI - loI) + 1)
+						b2 := fran / float64(x)
+						histScaled2 := make(jpegbw.IntHist)
+						maxHS2 := int64(0)
+						for i := uint16(0); i < uint16(x); i++ {
+							f := loI + uint16(float64(i)*b2)
+							t := uint16(float64(f) + b2)
+							if t == f {
+								t++
+							}
+							hv := int64(0)
+							for h := f; h < t; h++ {
+								hv += hist[h]
+							}
+							histScaled2[i] = hv
+							if hv > maxHS2 {
+								maxHS2 = hv
+							}
+						}
+						prev := int64(0)
+						next := int64(0)
+						prevI := uint16(0xffff)
+						for i := uint16(0); i < uint16(x); i++ {
+							v := histScaled[i]
+							if v > 0 {
+								prev = v
+								prevI = i
+							} else {
+								nextJ := uint16(0xffff)
+								for j := i + 1; j < uint16(x); j++ {
+									w := histScaled[j]
+									if w > 0 {
+										next = w
+										nextJ = j
+										break
+									}
+								}
+								if prevI != 0xffff && nextJ != 0xffff {
+									histScaled[i] = prev + int64((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
+								}
+							}
+						}
+						prev = 0
+						next = 0
+						prevI = uint16(0xffff)
+						for i := uint16(0); i < uint16(x); i++ {
+							v := histScaled2[i]
+							if v > 0 {
+								prev = v
+								prevI = i
+							} else {
+								nextJ := uint16(0xffff)
+								for j := i + 1; j < uint16(x); j++ {
+									w := histScaled2[j]
+									if w > 0 {
+										next = w
+										nextJ = j
+										break
+									}
+								}
+								if prevI != 0xffff && nextJ != 0xffff {
+									histScaled2[i] = prev + int64((float64(i-prevI)/float64(nextJ-prevI))*float64(next-prev))
+								}
+							}
+						}
+						maxHSF := float64(maxHS)
+						maxHSF2 := float64(maxHS2)
+						finf := float64(inf * 2)
+						// debug: fmt.Printf("histScaled: %+v\n", histScaled.str())
+						ran := (hiI - loI) + 1
+						ran4 := (ran + 1) / 4
+						if ran == 0 {
+							ran = 0xffff
+						}
+						if ran4 == 0 {
+							ran4 = 0x4000
+						}
+						getPixelFunc = func(img *image.Image, i, j int) (uint32, uint32, uint32, uint32) {
+							if i < x-inf && j < y-(2*inf) {
+								// normal pixel
+								return (*img).At(i, j).RGBA()
+							} else if j < y-(2*inf) {
+								// scale on the right: GS or GS, R, G, B
+								if einf {
+									g := (uint32(j) * uint32(ran)) / uint32(y-2*inf)
+									d := g / uint32(ran4)
+									r := uint32(hiI) - ((g % uint32(ran4)) << 2)
+									switch d {
+									case 0:
+										return r, r, r, uint32(0xffff)
+									case 1:
+										return r, 0, 0, uint32(0xffff)
+									case 2:
+										return 0, r, 0, uint32(0xffff)
+									default:
+										return 0, 0, r, uint32(0xffff)
+									}
+								} else {
+									g := uint32(hiI) - ((uint32(j) * uint32(ran)) / uint32(y-2*inf))
+									return g, g, g, uint32(0xffff)
+								}
+							}
+							// 2 histograms on the botton: scaled & absolute
+							cv := float64((y-j)-1) / finf
+							ncv := cv * 2.
+							g := uint32(0xffff)
+							if cv < .5 {
+								hv := float64(histScaled[uint16(i)]) / maxHSF
+								if ncv >= hv {
+									g = uint32(0)
+								}
+							} else {
+								ncv -= 1.
+								hv2 := float64(histScaled2[uint16(i)]) / maxHSF2
+								if ncv >= hv2 {
+									g = uint32(0)
+								}
+							}
 							return g, g, g, uint32(0xffff)
 						}
 					}
-					// 2 histograms on the botton: scaled & absolute
-					cv := float64((y-j)-1) / finf
-					ncv := cv * 2.
-					g := uint32(0xffff)
-					if cv < .5 {
-						hv := float64(histScaled[uint16(i)]) / maxHSF
-						if ncv >= hv {
-							g = uint32(0)
-						}
-					} else {
-						ncv -= 1.
-						hv2 := float64(histScaled2[uint16(i)]) / maxHSF2
-						if ncv >= hv2 {
-							g = uint32(0)
-						}
+
+					dtEndH := time.Now()
+					timeH += dtEndH.Sub(dtStartH)
+					fmt.Printf(" %s: (%d, %d) int: (%d, %d) mult: %f...", colrgba, minGs, maxGs, loI, hiI, mult)
+					// info: fmt.Printf("histCum: %+v\n", histCum.str())
+					_ = flush.Flush()
+					if acm {
+						loIs = append(loIs, loI)
+						hiIs = append(hiIs, hiI)
+						mults = append(mults, mult)
 					}
-					return g, g, g, uint32(0xffff)
 				}
-			}
-
-			dtEndH := time.Now()
-			timeH += dtEndH.Sub(dtStartH)
-			fmt.Printf(" %s: (%d, %d) int: (%d, %d) mult: %f...", colrgba, minGs, maxGs, loI, hiI, mult)
-			// info: fmt.Printf("histCum: %+v\n", histCum.str())
-			_ = flush.Flush()
-
-			che := make(chan error)
-			nThreads := 0
-			ctxa := []jpegbw.FparCtx{}
-			ctxInUse := make(map[int]bool)
-			for i := 0; i < thrN; i++ {
-				ctxa = append(ctxa, fctx[colidx].Cpy())
-				ctxInUse[i] = false
-			}
-
-			// calculations for current color
-			var cmtx = &sync.Mutex{}
-			dtStartF := time.Now()
-			for ii := 0; ii < x; ii++ {
-				go func(c chan error, i int) {
-					// debug: fmt.Printf("line: %d/%d\n", i, x)
-					cmtx.Lock()
-					cNum := -1
-					for t := 0; t < thrN; t++ {
-						if !ctxInUse[t] {
-							cNum = t
-							ctxInUse[cNum] = true
-							break
-						}
+				if !acm || pass == 1 {
+					if acm {
+						loI = acmloI
+						hiI = acmhiI
+						mult = acmmult
 					}
-					cmtx.Unlock()
-					if cNum < 0 {
-						// Sync
-						c <- fmt.Errorf("no context copy available: i=%d", i)
-						return
+					che := make(chan error)
+					nThreads := 0
+					ctxa := []jpegbw.FparCtx{}
+					ctxInUse := make(map[int]bool)
+					for i := 0; i < thrN; i++ {
+						ctxa = append(ctxa, fctx[colidx].Cpy())
+						ctxInUse[i] = false
 					}
-					fi := float64(i) / float64(x)
-					trace := 1.0
-					for j := 0; j < y; j++ {
-						fj := float64(j) / float64(y)
-						pr, pg, pb, pa := getPixelFunc(&m, i, j)
-						//if inf > 0 && (i >= xo || j >= yo) {
-						if inf > 0 && j >= yo {
-							switch colidx {
-							case 0:
-								pxdata[i][j][colidx] = uint16(pr)
-							case 1:
-								pxdata[i][j][colidx] = uint16(pg)
-							case 2:
-								pxdata[i][j][colidx] = uint16(pb)
-							default:
-								pxdata[i][j][colidx] = uint16(pa)
+
+					// calculations for current color
+					var cmtx = &sync.Mutex{}
+					dtStartF := time.Now()
+					for ii := 0; ii < x; ii++ {
+						go func(c chan error, i int) {
+							// debug: fmt.Printf("line: %d/%d\n", i, x)
+							cmtx.Lock()
+							cNum := -1
+							for t := 0; t < thrN; t++ {
+								if !ctxInUse[t] {
+									cNum = t
+									ctxInUse[cNum] = true
+									break
+								}
 							}
-							continue
-						}
-						gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
-						iv := int(gs) - int(loI)
-						if iv < 0 {
-							iv = 0
-						}
-						fv := float64(iv) * mult
-						if fv > 65535.0 {
-							fv = 65535.0
-						}
-						if gaB {
-							fv = math.Pow(fv/65535.0, ga) * 65535.0
-							if fv < 0.0 {
-								fv = 0.0
-							}
-							if fv > 65535.0 {
-								fv = 65535.0
-							}
-						}
-						if bFun[colidx] {
-							var e error
-							cv, e := ctxa[cNum].FparF(
-								[]complex128{
-									complex(fv/65535.0, 0.0),
-									complex(fi, fj),
-									complex(float64(pr)/65535.0, float64(pg)/65535.0),
-									complex(float64(pb)/65535.0, float64(pa)/65535.0),
-									complex(fk, trace),
-								},
-							)
-							if e != nil {
+							cmtx.Unlock()
+							if cNum < 0 {
 								// Sync
-								cmtx.Lock()
-								ctxInUse[cNum] = false
-								cmtx.Unlock()
-								c <- e
+								c <- fmt.Errorf("no context copy available: i=%d", i)
 								return
 							}
-							if useImag[colidx] {
-								fv = imag(cv)
-							} else {
-								fv = real(cv)
+							fi := float64(i) / float64(x)
+							trace := 1.0
+							for j := 0; j < y; j++ {
+								fj := float64(j) / float64(y)
+								pr, pg, pb, pa := getPixelFunc(&m, i, j)
+								//if inf > 0 && (i >= xo || j >= yo) {
+								if inf > 0 && j >= yo {
+									switch colidx {
+									case 0:
+										pxdata[i][j][colidx] = uint16(pr)
+									case 1:
+										pxdata[i][j][colidx] = uint16(pg)
+									case 2:
+										pxdata[i][j][colidx] = uint16(pb)
+									default:
+										pxdata[i][j][colidx] = uint16(pa)
+									}
+									continue
+								}
+								gs := uint16(r*float64(pr) + g*float64(pg) + b*float64(pb))
+								iv := int(gs) - int(loI)
+								if iv < 0 {
+									iv = 0
+								}
+								fv := float64(iv) * mult
+								if fv > 65535.0 {
+									fv = 65535.0
+								}
+								if gaB {
+									fv = math.Pow(fv/65535.0, ga) * 65535.0
+									if fv < 0.0 {
+										fv = 0.0
+									}
+									if fv > 65535.0 {
+										fv = 65535.0
+									}
+								}
+								if bFun[colidx] {
+									var e error
+									cv, e := ctxa[cNum].FparF(
+										[]complex128{
+											complex(fv/65535.0, 0.0),
+											complex(fi, fj),
+											complex(float64(pr)/65535.0, float64(pg)/65535.0),
+											complex(float64(pb)/65535.0, float64(pa)/65535.0),
+											complex(fk, trace),
+										},
+									)
+									if e != nil {
+										// Sync
+										cmtx.Lock()
+										ctxInUse[cNum] = false
+										cmtx.Unlock()
+										c <- e
+										return
+									}
+									if useImag[colidx] {
+										fv = imag(cv)
+									} else {
+										fv = real(cv)
+									}
+									trace = fv
+									// trace: fmt.Printf("trace is: %v\n", trace)
+									fv *= 65535.0
+									if fv < 0.0 {
+										fv = 0.0
+									}
+									if fv > 65535.0 {
+										fv = 65535.0
+									}
+								}
+								pxdata[i][j][colidx] = uint16(fv)
 							}
-							trace = fv
-							// trace: fmt.Printf("trace is: %v\n", trace)
-							fv *= 65535.0
-							if fv < 0.0 {
-								fv = 0.0
-							}
-							if fv > 65535.0 {
-								fv = 65535.0
-							}
-						}
-						pxdata[i][j][colidx] = uint16(fv)
-					}
-					// Sync
-					cmtx.Lock()
-					ctxInUse[cNum] = false
-					cmtx.Unlock()
-					c <- nil
-				}(che, ii)
+							// Sync
+							cmtx.Lock()
+							ctxInUse[cNum] = false
+							cmtx.Unlock()
+							c <- nil
+						}(che, ii)
 
-				// Keep maximum number of threads
-				nThreads++
-				if nThreads == thrN {
-					e := <-che
-					if e != nil {
-						return e
+						// Keep maximum number of threads
+						nThreads++
+						if nThreads == thrN {
+							e := <-che
+							if e != nil {
+								return e
+							}
+							nThreads--
+						}
 					}
-					nThreads--
+					for nThreads > 0 {
+						e := <-che
+						if e != nil {
+							return e
+						}
+						nThreads--
+					}
+					dtEndF := time.Now()
+					timeF += dtEndF.Sub(dtStartF)
 				}
 			}
-			for nThreads > 0 {
-				e := <-che
-				if e != nil {
-					return e
-				}
-				nThreads--
-			}
-			dtEndF := time.Now()
-			timeF += dtEndF.Sub(dtStartF)
 		}
 
 		// Hanlde contours algorithm
@@ -1340,6 +1387,7 @@ GSR - when OGS output, use this amount of R to generate final GS pixel
 GSG - when OGS output, use this amount of G to generate final GS pixel
 GSB - when OGS output, use this amount of B to generate final GS pixel
 (GSR+GSG+GSB) when OGS output - will be normalized to sum to 1, so their sum must be positive
+ACM - all colors multiplier mode - will calculate minimum index in all RGBA (4 channels), max in RGBA and then mult from this range
 HINT - use hints saved for every file "file.ext" - "file.ext.hint", if no hint is given warning is displayed
 HINTREQ - make hint file required
 Q - jpeg quality 1-100, will use library default if not specified
