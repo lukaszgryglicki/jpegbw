@@ -1,7 +1,7 @@
 #!/bin/bash
 if [ -z "$NF" ]
 then
-  echo "$0: lease specify number of frames with NF=n"
+  echo "$0: please specify number of frames with NF=n"
   exit 1
 fi
 if ( [ -z "$1" ] || [ -z "$2" ] )
