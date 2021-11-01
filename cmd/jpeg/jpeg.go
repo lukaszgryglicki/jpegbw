@@ -237,6 +237,18 @@ func images2RGBA(args []string) error {
 
 	// All colors mult (will keep smallest low index, biggest high index and calculate mult accoring to that)
 	acm := os.Getenv("ACM") != ""
+	acmFact := 0.0
+	if acm {
+		acmS := os.Getenv("ACM")
+		v, err := strconv.ParseFloat(acmS, 64)
+		if err != nil {
+			return err
+		}
+		if v < 0.0 || v > 1.0 {
+			return fmt.Errorf("ACM must be from 0-1 range")
+		}
+		acmFact = v
+	}
 
 	// Grayscale output
 	ogs := os.Getenv("OGS") != ""
@@ -928,9 +940,21 @@ func images2RGBA(args []string) error {
 				}
 				if !acm || pass == 1 {
 					if acm {
-						loI = acmloI
-						hiI = acmhiI
-						mult = acmmult
+						if acmFact > 0.999999 {
+							loI = acmloI
+							hiI = acmhiI
+							mult = acmmult
+						} else if acmFact <= 0.000001 {
+							loI = loIs[colidx]
+							hiI = hiIs[colidx]
+							mult = mults[colidx]
+						} else {
+							loI = uint16(float64(loIs[colidx]) - acmFact*float64(loIs[colidx]-acmloI))
+							hiI = uint16(float64(hiIs[colidx]) + acmFact*float64(acmhiI-hiIs[colidx]))
+							mult = mults[colidx] - acmFact*(mults[colidx]-acmmult)
+							fmt.Printf(" ACM(%f) int: (%d-%d->%d, %d-%d->%d) mult: %f-%f->%f...", acmFact, acmloI, loIs[colidx], loI, hiIs[colidx], acmhiI, hiI, acmmult, mults[colidx], mult)
+							_ = flush.Flush()
+						}
 						getPixelFunc = getPixelFuncAry[colidx]
 					}
 					che := make(chan error)
@@ -1396,6 +1420,7 @@ GSG - when OGS output, use this amount of G to generate final GS pixel
 GSB - when OGS output, use this amount of B to generate final GS pixel
 (GSR+GSG+GSB) when OGS output - will be normalized to sum to 1, so their sum must be positive
 ACM - all colors multiplier mode - will calculate minimum index in all RGBA (4 channels), max in RGBA and then mult from this range
+ACM - you can set variable ACM value from ACM=0 (as if it is not specified) to ACM=1, ACM=0.5 will do average between ACM and non-ACM mode
 HINT - use hints saved for every file "file.ext" - "file.ext.hint", if no hint is given warning is displayed
 HINTREQ - make hint file required
 Q - jpeg quality 1-100, will use library default if not specified
