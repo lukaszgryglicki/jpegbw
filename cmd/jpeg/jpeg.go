@@ -235,6 +235,9 @@ func images2RGBA(args []string) error {
 	// No alpha processing
 	noA := os.Getenv("NA") != ""
 
+	// Reverse the calculaTION
+	rev := os.Getenv("REV") != ""
+
 	// All colors mult (will keep smallest low index, biggest high index and calculate mult accoring to that)
 	acm := os.Getenv("ACM") != ""
 	acmFact := 0.0
@@ -989,9 +992,20 @@ func images2RGBA(args []string) error {
 							}
 							fi := float64(i) / float64(x)
 							trace := 1.0
+							cv := uint32(0)
 							for j := 0; j < y; j++ {
 								fj := float64(j) / float64(y)
 								pr, pg, pb, pa := getPixelFunc(&m, i, j)
+								switch colidx {
+								case 0:
+									cv = pr
+								case 1:
+									cv = pg
+								case 2:
+									cv = pb
+								default:
+									cv = pa
+								}
 								//if inf > 0 && (i >= xo || j >= yo) {
 								if inf > 0 && j >= yo {
 									switch colidx {
@@ -1058,7 +1072,21 @@ func images2RGBA(args []string) error {
 										fv = 65535.0
 									}
 								}
-								pxdata[i][j][colidx] = uint16(fv)
+								if rev {
+									delta := int(fv) - int(cv)
+									set := int(cv) - delta
+									if set < 0 {
+										set = 0
+									}
+									if set > 0xffff {
+										set = 0xffff
+									}
+									// fmt.Printf("curr = %d, new = %d, delta = %d, set = %d\n", cv, int(fv), delta, set)
+									pxdata[i][j][colidx] = uint16(set)
+
+								} else {
+									pxdata[i][j][colidx] = uint16(fv)
+								}
 							}
 							// Sync
 							cmtx.Lock()
@@ -1452,6 +1480,7 @@ O - eventual overwite file name config, example: ".jpg:.png"
 INF - set additional info on image size is N when INF=N
 EINF - more complex info.
 HPOW - INF histogram 0-0x10000 --> 0-1 --> x. f(x) = pow(x, HPOW). Default 1
+REV - reverse the calculation
 `
 		fmt.Printf("%s\n", helpStr)
 	}
