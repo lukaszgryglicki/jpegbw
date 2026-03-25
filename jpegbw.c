@@ -30,6 +30,90 @@ double complex saturate(double complex arg, double complex lo, double complex hi
   return (double complex)rarg;
 }
 
+static double irclamp01(double x) {
+  if (x < 0.0) {
+    return 0.0;
+  }
+  if (x > 1.0) {
+    return 1.0;
+  }
+  return x;
+}
+
+static void irsplit(
+  double rr,
+  double bb,
+  double eps,
+  double* m,
+  double* dr,
+  double* db,
+  double* tr,
+  double* tb
+) {
+  double s;
+  *m = rr < bb ? rr : bb;
+  *dr = rr > bb ? (rr - bb) : 0.0;
+  *db = bb > rr ? (bb - rr) : 0.0;
+  s = rr + bb + eps;
+  *tr = *dr / s;
+  *tb = *db / s;
+}
+
+/* Option 1: full remap.
+ * R-heavy side: green -> yellow -> red as you move toward the middle.
+ * B-heavy side: blue -> violet as you move toward the far-IR end.
+ * Neutral overlap is copied into all channels, so the middle stays close to gray.
+ */
+double complex irnatr(double complex r, double complex b, double complex violet, double complex eps) {
+  double rr = irclamp01(creal(r));
+  double bb = irclamp01(creal(b));
+  double kv = creal(violet);
+  double ke = creal(eps);
+  double m, dr, db, tr, tb;
+  if (ke <= 0.0) {
+    ke = 0.000001;
+  }
+  irsplit(rr, bb, ke, &m, &dr, &db, &tr, &tb);
+  return (double complex)irclamp01(m + dr * (1.0 - tr) + db * (kv * tb * tb));
+}
+
+double complex irnatg(double complex r, double complex b, double complex midblue, double complex eps) {
+  double rr = irclamp01(creal(r));
+  double bb = irclamp01(creal(b));
+  double kg = creal(midblue);
+  double ke = creal(eps);
+  double m, dr, db, tr, tb;
+  if (ke <= 0.0) {
+    ke = 0.000001;
+  }
+  irsplit(rr, bb, ke, &m, &dr, &db, &tr, &tb);
+  return (double complex)irclamp01(m + dr + db * (kg * (1.0 - tb)));
+}
+
+double complex irnatb(double complex r, double complex b, double complex boost, double complex eps) {
+  double rr = irclamp01(creal(r));
+  double bb = irclamp01(creal(b));
+  double kb = creal(boost);
+  double ke = creal(eps);
+  double m, dr, db, tr, tb;
+  if (ke <= 0.0) {
+    ke = 0.000001;
+  }
+  irsplit(rr, bb, ke, &m, &dr, &db, &tr, &tb);
+  return (double complex)irclamp01(m + db * (1.0 + kb * tb));
+}
+
+/* Option 2: keep output R/B unchanged, synthesize only G. */
+double complex irgreeng(double complex r, double complex b, double complex kred, double complex kblue) {
+  double rr = irclamp01(creal(r));
+  double bb = irclamp01(creal(b));
+  double kr = creal(kred);
+  double kb = creal(kblue);
+  double m, dr, db, tr, tb;
+  irsplit(rr, bb, 0.000001, &m, &dr, &db, &tr, &tb);
+  return (double complex)irclamp01(m + dr * kr + db * (kb * (1.0 - tb)));
+}
+
 double complex gsrainbowr(double complex arg) {
   double x = creal(arg);
   if (x >= 0. && x < 1./7.) {
