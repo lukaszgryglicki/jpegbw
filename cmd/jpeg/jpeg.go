@@ -21,6 +21,313 @@ import (
 	"github.com/lukaszgryglicki/jpegbw"
 )
 
+type ir3Config struct {
+	enabled        bool
+	greenOnly      bool
+	threshold      float64
+	shortStrength  float64
+	longStrength   float64
+	shadowFloor    float64
+	greenMid       float64
+	shortSplit     float64
+	shortEndR      float64
+	shortEndG      float64
+	shortEndB      float64
+	longSplit      float64
+	longVioletR    float64
+	longVioletG    float64
+	longVioletB    float64
+	longEndR       float64
+	longEndG       float64
+	longEndB       float64
+	gOnlyShortEnd  float64
+	gOnlyLongMid   float64
+	gOnlyLongEnd   float64
+	gOnlyLongSplit float64
+}
+
+func clamp01(v float64) float64 {
+	if v <= 0.0 {
+		return 0.0
+	}
+	if v >= 1.0 {
+		return 1.0
+	}
+	return v
+}
+
+func smooth01(v float64) float64 {
+	v = clamp01(v)
+	return v * v * (3.0 - 2.0*v)
+}
+
+func mixf(a, b, t float64) float64 {
+	return a + (b-a)*t
+}
+
+func ir3ConfigFromEnv() (ir3Config, error) {
+	cfg := ir3Config{
+		enabled:       false,
+		greenOnly:     false,
+		threshold:     2.5,
+		shortStrength: 1.0,
+		longStrength:  1.0,
+		shadowFloor:   0.08,
+		greenMid:      1.0,
+
+		/* shortwave full-map defaults: unchanged from v3 */
+		shortSplit: 0.55,
+		shortEndR:  0.0,
+		shortEndG:  1.0,
+		shortEndB:  0.0,
+
+		/*
+			Longwave full-map defaults:
+			- violet should start earlier than in v3
+			- endpoint should be halfway between v2 and v3
+			v2: split=0.55 violet=(0.55,0.00,1.00) end=(1.00,0.30,0.82)
+			v3: split=0.82 violet=(0.34,0.00,1.00) end=(0.50,0.06,0.92)
+			v4 midpoint default:
+			    split=0.685 violet=(0.445,0.00,1.00) end=(0.75,0.18,0.87)
+		*/
+		longSplit:   0.685,
+		longVioletR: 0.445,
+		longVioletG: 0.0,
+		longVioletB: 1.0,
+		longEndR:    0.75,
+		longEndG:    0.18,
+		longEndB:    0.87,
+
+		/* green-only defaults: unchanged from v3 */
+		gOnlyShortEnd:  1.0,
+		gOnlyLongMid:   0.60,
+		gOnlyLongEnd:   1.0,
+		gOnlyLongSplit: 0.80,
+	}
+	if os.Getenv("IR3") != "" {
+		cfg.enabled = true
+	}
+	if os.Getenv("IR3GONLY") != "" {
+		cfg.enabled = true
+		cfg.greenOnly = true
+	}
+	parseAny := func(envs []string, dst *float64, lo, hi float64) error {
+		for _, env := range envs {
+			s := os.Getenv(env)
+			if s == "" {
+				continue
+			}
+			v, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return err
+			}
+			if v < lo || v > hi {
+				return fmt.Errorf("%s must be from %f-%f range", env, lo, hi)
+			}
+			*dst = v
+			return nil
+		}
+		return nil
+	}
+	if err := parseAny([]string{"IRRATIO", "IRT"}, &cfg.threshold, 1.01, 65535.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRS"}, &cfg.shortStrength, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRL"}, &cfg.longStrength, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRSH"}, &cfg.shadowFloor, 0.0, 0.99); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRGM"}, &cfg.greenMid, 0.0, 2.0); err != nil {
+		return cfg, err
+	}
+
+	if err := parseAny([]string{"IRSPLIT", "IRSSPLIT"}, &cfg.shortSplit, 0.01, 0.99); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRSENDR", "IRSHORTENDR"}, &cfg.shortEndR, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRSENDG", "IRSHORTENDG"}, &cfg.shortEndG, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRSENDB", "IRSHORTENDB"}, &cfg.shortEndB, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+
+	if err := parseAny([]string{"IRLSPLIT"}, &cfg.longSplit, 0.01, 0.99); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRLVR", "IRLONGVIOLETR"}, &cfg.longVioletR, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRLVG", "IRLONGVIOLETG"}, &cfg.longVioletG, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRLVB", "IRLONGVIOLETB"}, &cfg.longVioletB, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRLENDR", "IRLONGENDR"}, &cfg.longEndR, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRLENDG", "IRLONGENDG"}, &cfg.longEndG, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRLENDB", "IRLONGENDB"}, &cfg.longEndB, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+
+	if err := parseAny([]string{"IRGSHORTEND"}, &cfg.gOnlyShortEnd, 0.0, 2.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRGLONGMID"}, &cfg.gOnlyLongMid, 0.0, 2.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRGLONGEND"}, &cfg.gOnlyLongEnd, 0.0, 2.0); err != nil {
+		return cfg, err
+	}
+	if err := parseAny([]string{"IRGLONGSPLIT"}, &cfg.gOnlyLongSplit, 0.01, 0.99); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
+
+func ir3ShortRamp(u float64, cfg ir3Config) (float64, float64, float64) {
+	u = clamp01(u)
+	t1 := smooth01(u / cfg.shortSplit)
+	t2 := smooth01((u - cfg.shortSplit) / (1.0 - cfg.shortSplit))
+	r := 1.0
+	g := t1
+	b := 0.0
+	r = mixf(r, cfg.shortEndR, t2)
+	g = mixf(g, cfg.shortEndG, t2)
+	b = mixf(b, cfg.shortEndB, t2)
+	return clamp01(r), clamp01(g), clamp01(b)
+}
+
+func ir3LongRamp(u float64, cfg ir3Config) (float64, float64, float64) {
+	u = clamp01(u)
+	t1 := smooth01(u / cfg.longSplit)
+	t2 := smooth01((u - cfg.longSplit) / (1.0 - cfg.longSplit))
+	r := mixf(0.0, cfg.longVioletR, t1)
+	g := mixf(0.0, cfg.longVioletG, t1)
+	b := mixf(1.0, cfg.longVioletB, t1)
+	r = mixf(r, cfg.longEndR, t2)
+	g = mixf(g, cfg.longEndG, t2)
+	b = mixf(b, cfg.longEndB, t2)
+	return clamp01(r), clamp01(g), clamp01(b)
+}
+
+func ir3LongRampGOnly(u float64, cfg ir3Config) float64 {
+	u = clamp01(u)
+	t1 := smooth01(u / cfg.gOnlyLongSplit)
+	t2 := smooth01((u - cfg.gOnlyLongSplit) / (1.0 - cfg.gOnlyLongSplit))
+	g := mixf(0.0, cfg.gOnlyLongMid, t1)
+	g = mixf(g, cfg.gOnlyLongEnd, t2)
+	return clamp01(g)
+}
+
+func ir3Map(r, g, b float64, cfg ir3Config) (float64, float64, float64) {
+	const eps = 1e-12
+
+	r = clamp01(r)
+	g = clamp01(g)
+	b = clamp01(b)
+
+	pos := b / (r + b + eps)
+	shortThr := 1.0 / (cfg.threshold + 1.0)
+	longThr := cfg.threshold / (cfg.threshold + 1.0)
+
+	shortTail := 0.0
+	longTail := 0.0
+	if pos < shortThr {
+		shortTail = smooth01((shortThr - pos) / (shortThr + eps))
+	}
+	if pos > longThr {
+		longTail = smooth01((pos - longThr) / (1.0 - longThr + eps))
+	}
+
+	lum := math.Max(r, b)
+	amp := smooth01((lum - cfg.shadowFloor) / (1.0 - cfg.shadowFloor))
+	shortTail *= amp
+	longTail *= amp
+
+	outR := r
+	outG := clamp01(g * cfg.greenMid)
+	outB := b
+
+	if shortTail > 0.0 {
+		sr, sg, sb := ir3ShortRamp(shortTail, cfg)
+		t := clamp01(cfg.shortStrength * shortTail)
+		if cfg.greenOnly {
+			outG = mixf(outG, lum*clamp01(sg*cfg.gOnlyShortEnd), t)
+		} else {
+			outR = mixf(outR, lum*sr, t)
+			outG = mixf(outG, lum*sg, t)
+			outB = mixf(outB, lum*sb, t)
+		}
+	}
+	if longTail > 0.0 {
+		t := clamp01(cfg.longStrength * longTail)
+		if cfg.greenOnly {
+			lg := ir3LongRampGOnly(longTail, cfg)
+			outG = mixf(outG, lum*lg, t)
+		} else {
+			lr, lg, lb := ir3LongRamp(longTail, cfg)
+			outR = mixf(outR, lum*lr, t)
+			outG = mixf(outG, lum*lg, t)
+			outB = mixf(outB, lum*lb, t)
+		}
+	}
+
+	if cfg.greenOnly {
+		return r, clamp01(outG), b
+	}
+	return clamp01(outR), clamp01(outG), clamp01(outB)
+}
+
+func applyIR3(pxdata [][][4]uint16, x, y, thrN int, cfg ir3Config) error {
+	if !cfg.enabled {
+		return nil
+	}
+	che := make(chan error)
+	nThreads := 0
+	for ii := 0; ii < x; ii++ {
+		go func(c chan error, i int) {
+			for j := 0; j < y; j++ {
+				px := pxdata[i][j]
+				r := float64(px[0]) / 65535.0
+				g := float64(px[1]) / 65535.0
+				b := float64(px[2]) / 65535.0
+				rr, gg, bb := ir3Map(r, g, b, cfg)
+				pxdata[i][j][0] = uint16(clamp01(rr)*65535.0 + 0.5)
+				pxdata[i][j][1] = uint16(clamp01(gg)*65535.0 + 0.5)
+				pxdata[i][j][2] = uint16(clamp01(bb)*65535.0 + 0.5)
+			}
+			c <- nil
+		}(che, ii)
+		nThreads++
+		if nThreads == thrN {
+			e := <-che
+			if e != nil {
+				return e
+			}
+			nThreads--
+		}
+	}
+	for nThreads > 0 {
+		e := <-che
+		if e != nil {
+			return e
+		}
+		nThreads--
+	}
+	return nil
+}
+
 // images2RGBA: convert given images to bw: iname.ext -> co_iname.ext, dir/iname.ext -> dir/co_iname.ext
 // Other parameters are set via env variables (see main() function it describes all env params):
 func images2RGBA(args []string) error {
@@ -81,6 +388,14 @@ func images2RGBA(args []string) error {
 		overFrom = ary[0]
 		overTo = ary[1]
 		overB = true
+	}
+
+	ir3cfg, err := ir3ConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	if ir3cfg.enabled {
+		fmt.Printf("IR3 enabled: threshold=%f short=%f long=%f shadow=%f gmid=%f green_only=%v\n", ir3cfg.threshold, ir3cfg.shortStrength, ir3cfg.longStrength, ir3cfg.shadowFloor, ir3cfg.greenMid, ir3cfg.greenOnly)
 	}
 
 	// RGBA arrays
@@ -1293,6 +1608,18 @@ func images2RGBA(args []string) error {
 			dtContEnd := time.Now()
 			contTime := dtContEnd.Sub(dtContStart)
 			fmt.Printf(" contours (%+v)...", contTime)
+		}
+
+		if ir3cfg.enabled {
+			dtIR3Start := time.Now()
+			err = applyIR3(pxdata, x, y, thrN, ir3cfg)
+			if err != nil {
+				return err
+			}
+			dtIR3End := time.Now()
+			ir3Time := dtIR3End.Sub(dtIR3Start)
+			timeF += ir3Time
+			fmt.Printf(" ir3 (%+v)...", ir3Time)
 		}
 
 		// Final write to target
