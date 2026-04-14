@@ -1,4 +1,4 @@
-GO_BIN_FILES=cmd/jpegbw/jpegbw.go cmd/gengo/gengo.go cmd/cmap/cmap.go cmd/f/f.go cmd/jpeg/jpeg.go cmd/hist/hist.go cmd/sr/sr.go
+GO_BIN_FILES=cmd/jpegbw/jpegbw.go cmd/gengo/gengo.go cmd/cmap/cmap.go cmd/f/f.go cmd/jpeg/jpeg.go cmd/hist/hist.go cmd/sr/sr.go cmd/jpeg/monovalue.go
 GO_LIB_FILES=fpar.go hist.go
 GO_BIN_CMDS=github.com/lukaszgryglicki/jpegbw/cmd/jpegbw github.com/lukaszgryglicki/jpegbw/cmd/gengo github.com/lukaszgryglicki/jpegbw/cmd/cmap github.com/lukaszgryglicki/jpegbw/cmd/f github.com/lukaszgryglicki/jpegbw/cmd/jpeg github.com/lukaszgryglicki/jpegbw/cmd/hist github.com/lukaszgryglicki/jpegbw/cmd/sr
 GO_ENV=CGO_ENABLED=1
@@ -42,8 +42,8 @@ plot: cmd/plot/plot.go ${C_LIBS} ${GO_LIB_FILES}
 jpegbw: cmd/jpegbw/jpegbw.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o jpegbw cmd/jpegbw/jpegbw.go
 
-jpeg: cmd/jpeg/jpeg.go ${C_LIBS} ${GO_LIB_FILES}
-	${GO_ENV} ${GO_BUILD} -o jpeg cmd/jpeg/jpeg.go
+jpeg: cmd/jpeg/jpeg.go cmd/jpeg/monovalue.go ${C_LIBS} ${GO_LIB_FILES}
+	${GO_ENV} ${GO_BUILD} -o jpeg cmd/jpeg/jpeg.go cmd/jpeg/monovalue.go
 
 f: cmd/f/f.go ${C_LIBS} ${GO_LIB_FILES}
 	${GO_ENV} ${GO_BUILD} -o f cmd/f/f.go

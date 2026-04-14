@@ -328,6 +328,140 @@ func applyIR3(pxdata [][][4]uint16, x, y, thrN int, cfg ir3Config) error {
 	return nil
 }
 
+type isoValConfig struct {
+	enabled bool
+	mode    string
+	target  float64
+	wR      float64
+	wG      float64
+	wB      float64
+}
+
+func isoValConfigFromEnv() (isoValConfig, error) {
+	cfg := isoValConfig{
+		enabled: false,
+		mode:    "",
+		target:  0.5,
+		wR:      0.2126,
+		wG:      0.7152,
+		wB:      0.0722,
+	}
+	mode := strings.TrimSpace(strings.ToLower(os.Getenv("ISOVAL")))
+	if mode == "" {
+		return cfg, nil
+	}
+	switch mode {
+	case "add", "offset", "shift":
+		cfg.mode = "add"
+	case "mul", "mult", "multiply", "scale":
+		cfg.mode = "mul"
+	default:
+		return cfg, fmt.Errorf("ISOVAL must be one of: add, mul")
+	}
+	cfg.enabled = true
+	parse := func(env string, dst *float64, lo, hi float64) error {
+		s := os.Getenv(env)
+		if s == "" {
+			return nil
+		}
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return err
+		}
+		if v < lo || v > hi {
+			return fmt.Errorf("%s must be from %f-%f range", env, lo, hi)
+		}
+		*dst = v
+		return nil
+	}
+	if err := parse("IVT", &cfg.target, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parse("IVR", &cfg.wR, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parse("IVG", &cfg.wG, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	if err := parse("IVB", &cfg.wB, 0.0, 1.0); err != nil {
+		return cfg, err
+	}
+	fact := cfg.wR + cfg.wG + cfg.wB
+	if fact <= 0.0 {
+		return cfg, fmt.Errorf("IVR+IVG+IVB must be positive")
+	}
+	cfg.wR /= fact
+	cfg.wG /= fact
+	cfg.wB /= fact
+	return cfg, nil
+}
+
+func isoValValue(r, g, b float64, cfg isoValConfig) float64 {
+	return cfg.wR*r + cfg.wG*g + cfg.wB*b
+}
+
+func isoValAddMode(r, g, b float64, cfg isoValConfig) (float64, float64, float64) {
+	delta := cfg.target - isoValValue(r, g, b, cfg)
+	return clamp01(r + delta), clamp01(g + delta), clamp01(b + delta)
+}
+
+func isoValMulMode(r, g, b float64, cfg isoValConfig) (float64, float64, float64) {
+	const eps = 1e-12
+	v := isoValValue(r, g, b, cfg)
+	if v <= eps {
+		return r, g, b
+	}
+	s := cfg.target / v
+	return clamp01(r * s), clamp01(g * s), clamp01(b * s)
+}
+
+func applyIsoVal(pxdata [][][4]uint16, x, y, thrN int, cfg isoValConfig) error {
+	if !cfg.enabled {
+		return nil
+	}
+	che := make(chan error)
+	nThreads := 0
+	for ii := 0; ii < x; ii++ {
+		go func(c chan error, i int) {
+			for j := 0; j < y; j++ {
+				px := pxdata[i][j]
+				r := float64(px[0]) / 65535.0
+				g := float64(px[1]) / 65535.0
+				b := float64(px[2]) / 65535.0
+				var rr, gg, bb float64
+				switch cfg.mode {
+				case "add":
+					rr, gg, bb = isoValAddMode(r, g, b, cfg)
+				case "mul":
+					rr, gg, bb = isoValMulMode(r, g, b, cfg)
+				default:
+					rr, gg, bb = r, g, b
+				}
+				pxdata[i][j][0] = uint16(clamp01(rr)*65535.0 + 0.5)
+				pxdata[i][j][1] = uint16(clamp01(gg)*65535.0 + 0.5)
+				pxdata[i][j][2] = uint16(clamp01(bb)*65535.0 + 0.5)
+			}
+			c <- nil
+		}(che, ii)
+		nThreads++
+		if nThreads == thrN {
+			e := <-che
+			if e != nil {
+				return e
+			}
+			nThreads--
+		}
+	}
+	for nThreads > 0 {
+		e := <-che
+		if e != nil {
+			return e
+		}
+		nThreads--
+	}
+	return nil
+}
+
 // images2RGBA: convert given images to bw: iname.ext -> co_iname.ext, dir/iname.ext -> dir/co_iname.ext
 // Other parameters are set via env variables (see main() function it describes all env params):
 func images2RGBA(args []string) error {
@@ -396,6 +530,29 @@ func images2RGBA(args []string) error {
 	}
 	if ir3cfg.enabled {
 		fmt.Printf("IR3 enabled: threshold=%f short=%f long=%f shadow=%f gmid=%f green_only=%v\n", ir3cfg.threshold, ir3cfg.shortStrength, ir3cfg.longStrength, ir3cfg.shadowFloor, ir3cfg.greenMid, ir3cfg.greenOnly)
+	}
+
+	isovalcfg, err := isoValConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	if isovalcfg.enabled {
+		fmt.Printf("ISOVAL enabled: mode=%s target=%f weights=(%f,%f,%f)\n", isovalcfg.mode, isovalcfg.target, isovalcfg.wR, isovalcfg.wG, isovalcfg.wB)
+	}
+
+	monocfg, err := monoValueConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	if monocfg.enabled {
+		fmt.Printf("MONOVAL enabled: mode=%s target=%f gamut=%s zero=%s weights=(%f,%f,%f)", monocfg.mode, monocfg.target, monocfg.gamutMode, monocfg.zeroMode, monocfg.lumaR, monocfg.lumaG, monocfg.lumaB)
+		if monocfg.satOverrideSet {
+			fmt.Printf(" sat=%f", monocfg.satOverride)
+		}
+		if monocfg.chromaOverrideSet {
+			fmt.Printf(" chroma=%f", monocfg.chromaOverride)
+		}
+		fmt.Printf("\n")
 	}
 
 	// RGBA arrays
@@ -1622,6 +1779,30 @@ func images2RGBA(args []string) error {
 			fmt.Printf(" ir3 (%+v)...", ir3Time)
 		}
 
+		if monocfg.enabled {
+			dtMonoStart := time.Now()
+			err = applyMonoValue(pxdata, x, y, thrN, monocfg)
+			if err != nil {
+				return err
+			}
+			dtMonoEnd := time.Now()
+			monoTime := dtMonoEnd.Sub(dtMonoStart)
+			timeF += monoTime
+			fmt.Printf(" monoval (%+v)...", monoTime)
+		}
+
+		if isovalcfg.enabled {
+			dtIsoValStart := time.Now()
+			err = applyIsoVal(pxdata, x, y, thrN, isovalcfg)
+			if err != nil {
+				return err
+			}
+			dtIsoValEnd := time.Now()
+			isoValTime := dtIsoValEnd.Sub(dtIsoValStart)
+			timeF += isoValTime
+			fmt.Printf(" isoval (%+v)...", isoValTime)
+		}
+
 		// Final write to target
 		var (
 			target   *image.RGBA64
@@ -1808,6 +1989,23 @@ INF - set additional info on image size is N when INF=N
 EINF - more complex info.
 HPOW - INF histogram 0-0x10000 --> 0-1 --> x. f(x) = pow(x, HPOW). Default 1
 REV - reverse the calculation
+MONOVAL / MVMODE - final mono-value stage, one of: luma, linear, hsv, hsl, oklch
+  luma   - flatten the same weighted channel-value measure that jpeg/jpegbw grayscale uses
+  linear - flatten linear-RGB luminance using MVR/MVG/MVB weights
+  hsv    - keep hue and saturation, replace HSV value with MVT
+  hsl    - keep hue and saturation, replace HSL lightness with MVT
+  oklch  - keep OKLCh hue/chroma, replace OK lightness with MVT, optionally gamut-fit
+MVT - target flattened value/lightness/luminance, 0-1, default 0.5
+MVR/MVG/MVB - weights for luma/linear modes, default 0.2126/0.7152/0.0722, normalized internally
+MVGAMUT - fit or clip, default fit. fit reduces chroma to stay inside gamut
+MVZERO - gray or black, default gray. controls undefined-hue / zero-luma pixels in luma/linear modes
+MVS - optional saturation override for hsv/hsl modes. if unset, original saturation is preserved
+MVC - optional chroma override for oklch mode. if unset, original chroma is preserved
+ISOVAL - equalize weighted RGB value/lightness across the image, modes: add or mul
+  add - adds/subtracts the same delta to R,G,B so IVR*R+IVG*G+IVB*B reaches IVT (with clipping)
+  mul - multiplies/divides R,G,B by the same factor so IVR*R+IVG*G+IVB*B reaches IVT (with clipping)
+IVT - ISOVAL target value 0-1, default 0.5
+IVR/IVG/IVB - ISOVAL value weights, default 0.2126/0.7152/0.0722, normalized internally
 `
 		fmt.Printf("%s\n", helpStr)
 	}
