@@ -333,6 +333,7 @@ type isoValConfig struct {
 	mode     string
 	target   float64
 	autoMode string
+	expBase  float64
 	wR       float64
 	wG       float64
 	wB       float64
@@ -342,10 +343,13 @@ type isoValStats struct {
 	minV         float64
 	maxV         float64
 	avgV         float64
+	medV         float64
 	addTargetMin float64
 	addTargetMax float64
 	mulTargetMax float64
-	scalableN    int
+	expTargetMax float64
+	mulScalableN int
+	expScalableN int
 }
 
 func isoValConfigFromEnv() (isoValConfig, error) {
@@ -354,6 +358,7 @@ func isoValConfigFromEnv() (isoValConfig, error) {
 		mode:     "",
 		target:   0.5,
 		autoMode: "",
+		expBase:  2.0,
 		wR:       0.2126,
 		wG:       0.7152,
 		wB:       0.0722,
@@ -367,10 +372,13 @@ func isoValConfigFromEnv() (isoValConfig, error) {
 		cfg.mode = "add"
 	case "mul", "mult", "multiply", "scale":
 		cfg.mode = "mul"
+	case "exp", "expo", "exponential":
+		cfg.mode = "exp"
 	default:
-		return cfg, fmt.Errorf("ISOVAL must be one of: add, mul")
+		return cfg, fmt.Errorf("ISOVAL must be one of: add, mul, exp")
 	}
 	cfg.enabled = true
+
 	parse := func(env string, dst *float64, lo, hi float64) error {
 		s := os.Getenv(env)
 		if s == "" {
@@ -386,6 +394,7 @@ func isoValConfigFromEnv() (isoValConfig, error) {
 		*dst = v
 		return nil
 	}
+
 	if err := parse("IVT", &cfg.target, 0.0, 1.0); err != nil {
 		return cfg, err
 	}
@@ -398,6 +407,10 @@ func isoValConfigFromEnv() (isoValConfig, error) {
 	if err := parse("IVB", &cfg.wB, 0.0, 1.0); err != nil {
 		return cfg, err
 	}
+	if err := parse("IVBASE", &cfg.expBase, 1.000001, 1000.0); err != nil {
+		return cfg, err
+	}
+
 	fact := cfg.wR + cfg.wG + cfg.wB
 	if fact <= 0.0 {
 		return cfg, fmt.Errorf("IVR+IVG+IVB must be positive")
@@ -412,12 +425,14 @@ func isoValConfigFromEnv() (isoValConfig, error) {
 		cfg.autoMode = ""
 	case "avg", "average", "mean":
 		cfg.autoMode = "avg"
+	case "med", "median":
+		cfg.autoMode = "med"
 	case "min", "minimum", "low":
 		cfg.autoMode = "min"
 	case "max", "maximum", "high":
 		cfg.autoMode = "max"
 	default:
-		return cfg, fmt.Errorf("IVTAUTO must be one of: avg, min, max")
+		return cfg, fmt.Errorf("IVTAUTO must be one of: avg, med, min, max")
 	}
 	return cfg, nil
 }
@@ -441,20 +456,54 @@ func isoValMulMode(r, g, b float64, cfg isoValConfig) (float64, float64, float64
 	return clamp01(r * s), clamp01(g * s), clamp01(b * s)
 }
 
+func isoValExpMode(r, g, b float64, cfg isoValConfig) (float64, float64, float64) {
+	/*
+		Literal exponential mode:
+		  outC = base^(inC + shift)
+		with the same shift for R,G,B in a pixel.
+
+		Because weights are normalized, we can solve shift analytically:
+		  base^shift = target / (wR*base^r + wG*base^g + wB*base^b)
+
+		So:
+		  outR = base^r * target / denom
+		  outG = base^g * target / denom
+		  outB = base^b * target / denom
+	*/
+	const eps = 1e-12
+	if cfg.target <= eps {
+		return 0.0, 0.0, 0.0
+	}
+	br := math.Pow(cfg.expBase, r)
+	bg := math.Pow(cfg.expBase, g)
+	bb := math.Pow(cfg.expBase, b)
+	denom := cfg.wR*br + cfg.wG*bg + cfg.wB*bb
+	if denom <= eps {
+		return 0.0, 0.0, 0.0
+	}
+	s := cfg.target / denom
+	return clamp01(br * s), clamp01(bg * s), clamp01(bb * s)
+}
+
 func isoValStatsFromPxdata(pxdata [][][4]uint16, x, y int, cfg isoValConfig) isoValStats {
 	const eps = 1e-12
 	st := isoValStats{
 		minV:         0.0,
 		maxV:         0.0,
 		avgV:         0.0,
+		medV:         0.0,
 		addTargetMin: 0.0,
 		addTargetMax: 1.0,
 		mulTargetMax: 0.0,
-		scalableN:    0,
+		expTargetMax: 1.0,
+		mulScalableN: 0,
+		expScalableN: 0,
 	}
 	first := true
 	sum := 0.0
-	all := float64(x * y)
+	all := int64(x * y)
+	hist := make([]int64, 0x10000)
+
 	for i := 0; i < x; i++ {
 		for j := 0; j < y; j++ {
 			px := pxdata[i][j]
@@ -462,6 +511,7 @@ func isoValStatsFromPxdata(pxdata [][][4]uint16, x, y int, cfg isoValConfig) iso
 			g := float64(px[1]) / 65535.0
 			b := float64(px[2]) / 65535.0
 			v := isoValValue(r, g, b, cfg)
+
 			if first {
 				st.minV = v
 				st.maxV = v
@@ -476,43 +526,95 @@ func isoValStatsFromPxdata(pxdata [][][4]uint16, x, y int, cfg isoValConfig) iso
 			}
 			sum += v
 
+			vi := int(v*65535.0 + 0.5)
+			if vi < 0 {
+				vi = 0
+			}
+			if vi > 0xffff {
+				vi = 0xffff
+			}
+			hist[vi]++
+
 			minRGB := math.Min(r, math.Min(g, b))
 			maxRGB := math.Max(r, math.Max(g, b))
 
-			// smallest target that does not create lower clipping in add mode
+			// add mode safe lower bound: no channel goes below 0
 			addMin := v - minRGB
 			if addMin > st.addTargetMin {
 				st.addTargetMin = addMin
 			}
 
-			// largest target that does not create upper clipping in add mode
+			// add mode safe upper bound: no channel goes above 1
 			addMax := v + 1.0 - maxRGB
 			if addMax < st.addTargetMax {
 				st.addTargetMax = addMax
 			}
 
-			// largest target that does not create overflow in mul mode
+			// mul mode safe upper bound: no channel overflows
 			if v > eps && maxRGB > eps {
 				mulMax := v / maxRGB
-				if st.scalableN == 0 || mulMax < st.mulTargetMax {
+				if st.mulScalableN == 0 || mulMax < st.mulTargetMax {
 					st.mulTargetMax = mulMax
 				}
-				st.scalableN++
+				st.mulScalableN++
+			}
+
+			// exp mode safe upper bound: no channel overflows
+			br := math.Pow(cfg.expBase, r)
+			bg := math.Pow(cfg.expBase, g)
+			bexp := math.Pow(cfg.expBase, b)
+			maxExp := math.Max(br, math.Max(bg, bexp))
+			denomExp := cfg.wR*br + cfg.wG*bg + cfg.wB*bexp
+			if maxExp > eps {
+				expMax := denomExp / maxExp
+				if st.expScalableN == 0 || expMax < st.expTargetMax {
+					st.expTargetMax = expMax
+				}
+				st.expScalableN++
 			}
 		}
 	}
-	if all > 0.0 {
-		st.avgV = sum / all
+
+	if all > 0 {
+		st.avgV = sum / float64(all)
+
+		wantLo := (all - 1) / 2
+		wantHi := all / 2
+		cum := int64(0)
+		medLo := 0
+		medHi := 0
+		foundLo := false
+		foundHi := false
+		for i, hv := range hist {
+			cum += hv
+			if !foundLo && cum > wantLo {
+				medLo = i
+				foundLo = true
+			}
+			if !foundHi && cum > wantHi {
+				medHi = i
+				foundHi = true
+				break
+			}
+		}
+		st.medV = (float64(medLo) + float64(medHi)) / (2.0 * 65535.0)
 	}
-	if st.scalableN == 0 {
+
+	if st.mulScalableN == 0 {
 		st.mulTargetMax = 0.0
 	}
+	if st.expScalableN == 0 {
+		st.expTargetMax = 0.0
+	}
+
 	st.minV = clamp01(st.minV)
 	st.maxV = clamp01(st.maxV)
 	st.avgV = clamp01(st.avgV)
+	st.medV = clamp01(st.medV)
 	st.addTargetMin = clamp01(st.addTargetMin)
 	st.addTargetMax = clamp01(st.addTargetMax)
 	st.mulTargetMax = clamp01(st.mulTargetMax)
+	st.expTargetMax = clamp01(st.expTargetMax)
 	return st
 }
 
@@ -523,17 +625,23 @@ func isoValResolveTarget(cfg isoValConfig, st isoValStats) isoValConfig {
 	switch cfg.autoMode {
 	case "avg":
 		cfg.target = st.avgV
+	case "med":
+		cfg.target = st.medV
 	case "min":
-		if cfg.mode == "add" {
+		switch cfg.mode {
+		case "add":
 			cfg.target = st.addTargetMin
-		} else {
+		case "mul", "exp":
 			cfg.target = 0.0
 		}
 	case "max":
-		if cfg.mode == "add" {
+		switch cfg.mode {
+		case "add":
 			cfg.target = st.addTargetMax
-		} else {
+		case "mul":
 			cfg.target = st.mulTargetMax
+		case "exp":
+			cfg.target = st.expTargetMax
 		}
 	}
 	cfg.target = clamp01(cfg.target)
@@ -559,6 +667,8 @@ func applyIsoVal(pxdata [][][4]uint16, x, y, thrN int, cfg isoValConfig) error {
 					rr, gg, bb = isoValAddMode(r, g, b, cfg)
 				case "mul":
 					rr, gg, bb = isoValMulMode(r, g, b, cfg)
+				case "exp":
+					rr, gg, bb = isoValExpMode(r, g, b, cfg)
 				default:
 					rr, gg, bb = r, g, b
 				}
@@ -663,9 +773,17 @@ func images2RGBA(args []string) error {
 	}
 	if isovalcfg.enabled {
 		if isovalcfg.autoMode == "" {
-			fmt.Printf("ISOVAL enabled: mode=%s target=%f weights=(%f,%f,%f)\n", isovalcfg.mode, isovalcfg.target, isovalcfg.wR, isovalcfg.wG, isovalcfg.wB)
+			if isovalcfg.mode == "exp" {
+				fmt.Printf("ISOVAL enabled: mode=%s target=%f base=%f weights=(%f,%f,%f)\n", isovalcfg.mode, isovalcfg.target, isovalcfg.expBase, isovalcfg.wR, isovalcfg.wG, isovalcfg.wB)
+			} else {
+				fmt.Printf("ISOVAL enabled: mode=%s target=%f weights=(%f,%f,%f)\n", isovalcfg.mode, isovalcfg.target, isovalcfg.wR, isovalcfg.wG, isovalcfg.wB)
+			}
 		} else {
-			fmt.Printf("ISOVAL enabled: mode=%s target=auto(%s) weights=(%f,%f,%f)\n", isovalcfg.mode, isovalcfg.autoMode, isovalcfg.wR, isovalcfg.wG, isovalcfg.wB)
+			if isovalcfg.mode == "exp" {
+				fmt.Printf("ISOVAL enabled: mode=%s target=auto(%s) base=%f weights=(%f,%f,%f)\n", isovalcfg.mode, isovalcfg.autoMode, isovalcfg.expBase, isovalcfg.wR, isovalcfg.wG, isovalcfg.wB)
+			} else {
+				fmt.Printf("ISOVAL enabled: mode=%s target=auto(%s) weights=(%f,%f,%f)\n", isovalcfg.mode, isovalcfg.autoMode, isovalcfg.wR, isovalcfg.wG, isovalcfg.wB)
+			}
 		}
 	}
 
@@ -1926,13 +2044,15 @@ func images2RGBA(args []string) error {
 				st := isoValStatsFromPxdata(pxdata, x, y, isovalcfgResolved)
 				isovalcfgResolved = isoValResolveTarget(isovalcfgResolved, st)
 				fmt.Printf(
-					" isoval-target=%f(auto=%s, avg=%f, addmin=%f, addmax=%f, mulmax=%f)...",
+					" isoval-target=%f(auto=%s, avg=%f, med=%f, addmin=%f, addmax=%f, mulmax=%f, expmax=%f)...",
 					isovalcfgResolved.target,
 					isovalcfgResolved.autoMode,
 					st.avgV,
+					st.medV,
 					st.addTargetMin,
 					st.addTargetMax,
 					st.mulTargetMax,
+					st.expTargetMax,
 				)
 			}
 			dtIsoValStart := time.Now()
@@ -1945,7 +2065,7 @@ func images2RGBA(args []string) error {
 			timeF += isoValTime
 			fmt.Printf(" isoval (%+v)...", isoValTime)
 		}
-
+	
 		// Final write to target
 		var (
 			target   *image.RGBA64
@@ -2144,17 +2264,27 @@ MVGAMUT - fit or clip, default fit. fit reduces chroma to stay inside gamut
 MVZERO - gray or black, default gray. controls undefined-hue / zero-luma pixels in luma/linear modes
 MVS - optional saturation override for hsv/hsl modes. if unset, original saturation is preserved
 MVC - optional chroma override for oklch mode. if unset, original chroma is preserved
-ISOVAL - equalize weighted RGB value/lightness across the image, modes: add or mul
+ISOVAL - equalize weighted RGB value/lightness across the image, modes: add, mul or exp
   add - adds/subtracts the same delta to R,G,B so IVR*R+IVG*G+IVB*B reaches IVT (with clipping)
   mul - multiplies/divides R,G,B by the same factor so IVR*R+IVG*G+IVB*B reaches IVT (with clipping)
+  exp - exponential-space equalization:
+        outC = IVBASE^(inC + shift), with the same shift for R,G,B in a pixel,
+        solved so IVR*R+IVG*G+IVB*B reaches IVT (with clipping)
 IVT - ISOVAL target value 0-1, default 0.5, ignored when IVTAUTO is set
 IVTAUTO - automatic ISOVAL target selection:
   avg - use the average weighted value of the current image before ISOVAL
-  max - for add: largest target without upper clipping, for mul: largest target without overflow
-  min - for add: smallest target without lower clipping, for mul: 0
+  med - use the median weighted value of the current image before ISOVAL
+  max - for add: largest target without upper clipping,
+        for mul: largest target without overflow,
+        for exp: largest target without overflow
+  min - for add: smallest target without lower clipping,
+        for mul: 0,
+        for exp: 0
 IVR/IVG/IVB - ISOVAL value weights, default 0.2126/0.7152/0.0722, normalized internally
+IVBASE - base for ISOVAL=exp, must be > 1, default 2.0
 Note: in add mode there may be no single target that avoids both upper and lower clipping for the whole image.
 Note: in mul mode pixels with weighted value 0 are left unchanged.
+Note: in exp mode black pixels do not stay black unless IVT resolves to 0.
 `
 		fmt.Printf("%s\n", helpStr)
 	}
